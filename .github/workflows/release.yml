@@ -3,23 +3,18 @@ name: Release
 on:
   push:
     tags:
-      - "v*.*.*"          # e.g. v1.0.0, v0.2.1
+      - "v*.*.*"
 
 jobs:
   create-release:
     runs-on: ubuntu-latest
     outputs:
       release_id: ${{ steps.create_release.outputs.id }}
-      release_upload_url: ${{ steps.create_release.outputs.upload_url }}
 
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Extract version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release (draft)
         id: create_release
@@ -27,7 +22,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: apps/desktop
           tagName: ${{ github.ref_name }}
           releaseName: "Bilo Notes ${{ github.ref_name }}"
           releaseBody: |
@@ -58,13 +52,11 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: src-tauri -> target
 
       - name: Install frontend dependencies
-        working-directory: apps/desktop
         run: npm install --registry https://registry.npmjs.org
 
-      # Build universal binary (works on both Intel and Apple Silicon)
       - name: Build macOS universal
         uses: tauri-apps/tauri-action@v0
         env:
@@ -77,6 +69,5 @@ jobs:
           # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
-          projectPath: apps/desktop
           args: --target universal-apple-darwin
           releaseId: ${{ needs.create-release.outputs.release_id }}
