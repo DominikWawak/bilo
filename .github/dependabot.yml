@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # npm — frontend
+  - package-ecosystem: npm
+    directory: /apps/desktop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+    ignore:
+      # Tiptap is a tightly coupled monorepo — upgrade all extensions together
+      - dependency-name: "@tiptap/*"
+        update-types: ["version-update:semver-major"]
+
+  # Cargo — Rust backend
+  - package-ecosystem: cargo
+    directory: /apps/desktop/src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - rust
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
