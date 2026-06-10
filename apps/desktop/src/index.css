@@ -1,0 +1,68 @@
+@import '@fontsource-variable/inter';
+
+/* ── Design tokens — grayscale neobrutalist ─────────────────────── */
+:root {
+  --black:      #0a0a0a;
+  --white:      #ffffff;
+  --grey-0:     #f8f7f5;   /* page / paper background */
+  --grey-1:     #eeede9;   /* sidebar */
+  --grey-2:     #c8c7c3;   /* borders, dividers */
+  --grey-3:     #6e6c68;   /* muted text — 5.5:1 on white */
+  --grey-4:     #3a3835;   /* secondary text — 9:1 on white */
+  --text:       #0f0e0c;   /* near-black body text */
+
+  /* The retro signature: hard no-blur offset shadow — grey so it contrasts on any bg */
+  --shadow-sm:  2px 2px 0 #5a5855;
+  --shadow-md:  3px 3px 0 #5a5855;
+
+  /* Fonts */
+  --font-ui:    'Inter Variable', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  --font-mono:  'SF Mono', 'Courier New', 'Menlo', monospace;
+  --font-note:  'Iowan Old Style', Georgia, 'Palatino Linotype', Palatino, 'Times New Roman', serif;
+
+  /* Easing */
+  --ease:       cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-feature-settings: 'cv01', 'ss03';
+  line-height: 1.45;
+  font-weight: 400;
+  color: var(--text);
+  background: var(--grey-0);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+input,
+textarea,
+select {
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+
+textarea:focus,
+input:focus,
+select:focus {
+  outline: none;
+}
