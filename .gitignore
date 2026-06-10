@@ -9,6 +9,10 @@ dist/
 dist-ssr/
 *.local
 
+# Lock file regenerated locally — may contain internal registry URLs
+# CI runs `npm install` so lock file is not needed in repo
+apps/desktop/package-lock.json
+
 # Logs
 logs/
 *.log
