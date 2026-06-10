@@ -14,7 +14,6 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: "*.dmg"
 
     runs-on: ${{ matrix.os }}
 
@@ -35,14 +34,12 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: apps/desktop/src-tauri -> target
+          workspaces: src-tauri -> target
 
       - name: Install frontend dependencies
-        working-directory: apps/desktop
         run: npm install --registry https://registry.npmjs.org
 
       - name: Type-check frontend
-        working-directory: apps/desktop
         run: npx tsc --noEmit
 
       - name: Build Tauri app
@@ -50,14 +47,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          projectPath: apps/desktop
           args: --target ${{ matrix.target }}
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: bilo-${{ matrix.os }}-${{ github.sha }}
-          path: |
-            apps/desktop/src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
           retention-days: 14
           if-no-files-found: warn

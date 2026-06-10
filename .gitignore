@@ -16,10 +16,11 @@ Desktop.ini
 node_modules/
 dist/
 dist-ssr/
+*.local
 
 # Lock file: regenerated locally from the company Nexus proxy;
 # may contain internal registry URLs. CI uses --registry=npmjs.org.
-apps/desktop/package-lock.json
+package-lock.json
 
 # ── Logs ───────────────────────────────────────────────────────────
 logs/
@@ -27,7 +28,6 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
-lerna-debug.log*
 
 # ── Environment / secrets ──────────────────────────────────────────
 .env
@@ -43,14 +43,14 @@ lerna-debug.log*
 *.provisionprofile
 
 # ── Rust / Cargo ───────────────────────────────────────────────────
-apps/desktop/src-tauri/target/
+src-tauri/target/
 
 # ── Tauri generated / build artifacts ─────────────────────────────
-apps/desktop/src-tauri/gen/          # all generated Tauri bindings
-apps/desktop/WixTools/               # Windows installer toolchain cache
+src-tauri/gen/
+WixTools/
 
 # ── Vite ───────────────────────────────────────────────────────────
-apps/desktop/.vite/
+.vite/
 
 # ── IDE ────────────────────────────────────────────────────────────
 .vscode/*
@@ -64,5 +64,4 @@ apps/desktop/.vite/
 *.swp
 
 # ── Cursor IDE ─────────────────────────────────────────────────────
-# (workspace-level Cursor config is personal — not needed in repo)
 .cursor/

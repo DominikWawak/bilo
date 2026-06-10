@@ -1,7 +1,0 @@
-# Covered by root .gitignore — kept as a fallback for tools
-# that only look at the nearest .gitignore.
-node_modules/
-dist/
-dist-ssr/
-*.local
-.DS_Store
