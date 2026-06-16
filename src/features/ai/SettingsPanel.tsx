@@ -16,6 +16,10 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [cursorEnabled, setCursorEnabled] = useState(false)
   const [agentsAvailable, setAgentsAvailable] = useState<{ cursor: boolean; kiro: boolean } | null>(null)
+  const [search, setSearch] = useState('')
+
+  const q = search.toLowerCase().trim()
+  const show = (keywords: string) => !q || keywords.toLowerCase().includes(q)
 
   useEffect(() => {
     invoke<string>('detect_agents').then((raw) => {
@@ -105,14 +109,26 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
     <div className="settings-page">
       <div className="settings-page-header">
         <span className="settings-page-title">Settings</span>
-        <button type="button" className="settings-page-back" onClick={onClose} title="Back (Esc)">
-          ← Back
-        </button>
+        <div className="sp-header-right">
+          <input
+            className="sp-search"
+            type="search"
+            placeholder="Search…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button type="button" className="settings-page-back" onClick={onClose} title="Back (Esc)">
+            ← Back
+          </button>
+        </div>
       </div>
 
       <div className="settings-page-body">
 
         {/* ── AI ── */}
+        {show('ai cursor kiro api key agent about me personal context') && (
         <section className="sp-section">
           <h2 className="sp-section-title">AI</h2>
           <div className="sp-fields">
@@ -183,9 +199,10 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
               <p className="sp-hint">Context given to the AI on every query.</p>
             </div>
           </div>
-        </section>
+        </section>)}
 
         {/* ── Jira ── */}
+        {show('jira atlassian ticket link base url email api token') && (
         <section className="sp-section">
           <h2 className="sp-section-title">Jira</h2>
           <div className="sp-fields">
@@ -203,9 +220,10 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
               <p className="sp-hint">Paste any Jira link in a note — it becomes a clickable ticket card.</p>
             </div>
           </div>
-        </section>
+        </section>)}
 
         {/* ── Sync ── */}
+        {show('sync github repository token backup push pull auto') && (
         <section className="sp-section">
           <h2 className="sp-section-title">GitHub Sync</h2>
           <p className="sp-desc">Back up your notes to a private GitHub repository. Pull on any device to restore.</p>
@@ -234,9 +252,10 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
             <button type="button" className="sp-btn" disabled={syncing || !syncRepoUrl || !syncToken} onClick={() => void runSync('pull')}>↓ Pull</button>
           </div>
           {syncMsg && <p className={`sp-msg${syncMsg.startsWith('Error') ? ' sp-msg--error' : ''}`}>{syncMsg}</p>}
-        </section>
+        </section>)}
 
         {/* ── Import ── */}
+        {show('import json notes cursor chat history transcripts') && (
         <section className="sp-section">
           <h2 className="sp-section-title">Import</h2>
 
@@ -281,7 +300,7 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
               </div>
             </div>
           )}
-        </section>
+        </section>)}
 
       </div>
     </div>

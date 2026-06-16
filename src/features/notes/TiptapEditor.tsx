@@ -388,17 +388,17 @@ const CalcNodeView = ({ deleteNode }: NodeViewProps) => {
   const [display, setDisplay] = useState('0')
   const [expr, setExpr] = useState('')
   const [hasResult, setHasResult] = useState(false)
+  const [focused, setFocused] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
 
   const press = (val: string) => {
     if (hasResult && /[0-9.]/.test(val)) {
-      // Start fresh after a result if user types a number
       setExpr(val); setDisplay(val); setHasResult(false); return
     }
     if (hasResult) setHasResult(false)
 
     if (val === '=') {
       try {
-        // Safe eval via Function — only arithmetic operators allowed
         const safe = expr.replace(/[^0-9+\-*/.() ]/g, '')
         // biome-ignore lint/security/noGlobalEval: calculator expression, input sanitised
         const result = Function(`'use strict'; return (${safe})`)() as number
@@ -418,6 +418,21 @@ const CalcNodeView = ({ deleteNode }: NodeViewProps) => {
     setExpr(next); setDisplay(next)
   }
 
+  // Keyboard handler — mirrors the button grid
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const map: Record<string, string> = {
+      'Enter': '=', 'Return': '=',
+      'Backspace': '⌫', 'Delete': '⌫',
+      'Escape': 'C',
+    }
+    const k = map[e.key] ?? e.key
+    if (/^[0-9+\-*/.()%]$/.test(k) || ['=', '⌫', 'C'].includes(k)) {
+      e.preventDefault()
+      e.stopPropagation()    // prevent ProseMirror from consuming the key
+      press(k)
+    }
+  }
+
   const rows = [
     ['C', '⌫', '%', '÷'],
     ['7', '8', '9', '×'],
@@ -426,11 +441,24 @@ const CalcNodeView = ({ deleteNode }: NodeViewProps) => {
     ['0', '.', '='],
   ]
 
-  // Map display symbols to JS operators
   const toOp = (k: string) => ({ '÷': '/', '×': '*', '−': '-', '%': '%' }[k] ?? k)
 
   return (
-    <NodeViewWrapper as="div" className="calc-block" contentEditable={false}>
+    <NodeViewWrapper
+      as="div"
+      className={`calc-block${focused ? ' calc-block--focused' : ''}`}
+      contentEditable={false}
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: calculator needs focus for keyboard input
+      tabIndex={0}
+      ref={wrapRef}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      onKeyDown={handleKeyDown}
+      onMouseDown={(e: React.MouseEvent) => {
+        e.preventDefault()  // stop ProseMirror text-selection
+        wrapRef.current?.focus()
+      }}
+    >
       <div className="calc-header">
         <span className="calc-label">calc</span>
         <button type="button" className="calc-close" onClick={deleteNode} title="Remove">✕</button>
