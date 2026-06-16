@@ -65,3 +65,11 @@ WixTools/
 
 # ── Cursor IDE ─────────────────────────────────────────────────────
 .cursor/
+
+# ── README GIF capture (temp PNG frames — final GIFs in docs/gifs/ are committed)
+docs/gifs/frames/
+
+# ── Playwright ─────────────────────────────────────────────────────
+test-results/
+playwright-report/
+playwright/.cache/
