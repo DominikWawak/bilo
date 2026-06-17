@@ -74,13 +74,13 @@ GitHub Actions builds a universal macOS `.dmg` and attaches it to a draft releas
 
 Blank writing surface. Corner **≡** opens the sidebar. Each note has a title field and created/updated timestamp.
 
-![Editor demo](docs/gifs/editor.gif)
+![Editor demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/editor.gif)
 
 ### Slash commands
 
 Type `/` anywhere in a note to open the command menu.
 
-![Slash menu demo](docs/gifs/slash-menu.gif)
+![Slash menu demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/slash-menu.gif)
 
 | Command | Action |
 |---------|--------|
@@ -106,7 +106,7 @@ Type `/` anywhere in a note to open the command menu.
 
 Create notes, organize into indented sections, fold sections, toggle **Show on calendar** per section, delete/rename from the section menu.
 
-![Sidebar demo](docs/gifs/sidebar.gif)
+![Sidebar demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/sidebar.gif)
 
 ### Calendar
 
@@ -116,26 +116,26 @@ Open from sidebar **Calendar** tab. Auto-switches month → week → day based o
 - `/log` block entries on their log date
 - `@` reminder badges from notes
 
-![Calendar demo](docs/gifs/calendar.gif)
+![Calendar demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/calendar.gif)
 
 ### Search
 
 **⌘K** — search all notes (title + body, in-memory index).  
 **⌘F** — find within the current note.
 
-![Search demo](docs/gifs/search.gif)
+![Search demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/search.gif)
 
 ### Rich blocks
 
 Todo lists and tables via slash commands.
 
-![Blocks demo](docs/gifs/blocks.gif)
+![Blocks demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/blocks.gif)
 
 ### Settings
 
 Full-page settings (⚙ in sidebar footer). Searchable sections for AI, Jira, GitHub sync, and import.
 
-![Settings demo](docs/gifs/settings.gif)
+![Settings demo](https://raw.githubusercontent.com/DominikWawak/bilo/main/docs/gifs/settings.gif)
 
 ---
 
