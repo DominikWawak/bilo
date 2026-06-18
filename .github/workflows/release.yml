@@ -28,6 +28,14 @@ jobs:
             ## What's new
 
             See the [full changelog](https://github.com/DominikWawak/bilo/commits/${{ github.ref_name }}).
+
+            ## macOS
+            > **"Bilo Notes" is damaged and can't be opened?**
+            > macOS Gatekeeper blocks unsigned apps. Run this once in Terminal:
+            > ```
+            > xattr -cr "/Applications/Bilo Notes.app"
+            > ```
+            > Or right-click the app → Open.
           releaseDraft: true
           prerelease: false
 
@@ -70,4 +78,83 @@ jobs:
           # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target universal-apple-darwin
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+
+  build-linux:
+    needs: create-release
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libgtk-3-dev
+
+      - name: Install frontend dependencies
+        run: npm install --registry https://registry.npmjs.org
+
+      - name: Build Linux AppImage + deb
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target x86_64-unknown-linux-gnu
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+
+  build-windows:
+    needs: create-release
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm install --registry https://registry.npmjs.org
+
+      - name: Build Windows MSI + NSIS installer
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target x86_64-pc-windows-msvc
           releaseId: ${{ needs.create-release.outputs.release_id }}
