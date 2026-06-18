@@ -706,7 +706,7 @@ async function fetchJiraChip(url: string, key: string): Promise<JiraChip> {
   }
 
   try {
-    const { invoke } = await import('@tauri-apps/api/core')
+
     const result = await invoke<JiraChip>('fetch_jira_ticket', {
       baseUrl: s.jiraBaseUrl,
       email: s.jiraEmail,

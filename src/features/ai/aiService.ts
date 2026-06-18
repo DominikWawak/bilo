@@ -1,3 +1,5 @@
+import { invoke } from '@tauri-apps/api/core'
+
 export const ORGANIZE_SYSTEM_PROMPT = `You are an expert note organizer embedded in a minimalist writing app.
 Your task is to reorganize messy, unstructured notes into clean, readable Markdown — without removing a single piece of information.
 
@@ -65,7 +67,6 @@ const llmCall = async (
   userContent: string,
   _maxTokens = 2048,
 ): Promise<string> => {
-  const { invoke } = await import('@tauri-apps/api/core')
   const agent = settings.preferredAgent ?? 'cursor'
   const totalChars = systemPrompt.length + userContent.length
 

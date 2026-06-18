@@ -9,4 +9,7 @@ export default defineConfig({
     strictPort: true,
   },
   clearScreen: false,
+  build: {
+    chunkSizeWarningLimit: 1000,
+  },
 })
