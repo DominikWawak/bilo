@@ -1,5 +1,11 @@
 # Bilo Notes
 
+[![CI](https://github.com/DominikWawak/bilo/actions/workflows/ci.yml/badge.svg)](https://github.com/DominikWawak/bilo/actions/workflows/ci.yml)
+[![Release](https://github.com/DominikWawak/bilo/actions/workflows/release.yml/badge.svg)](https://github.com/DominikWawak/bilo/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-0.1.0-black)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-black)
+
 Minimal note-taking app for creative professionals. Grayscale neobrutalist UI, rich-text editor with slash commands, calendar, local AI via Cursor/Kiro ACP, Jira tickets, and GitHub sync.
 
 Built with **Tauri 2** (Rust) + **React** + **Tiptap**.
