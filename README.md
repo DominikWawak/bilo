@@ -1,5 +1,11 @@
 # Bilo Notes
 
+[![CI](https://github.com/DominikWawak/bilo/actions/workflows/ci.yml/badge.svg)](https://github.com/DominikWawak/bilo/actions/workflows/ci.yml)
+[![Release](https://github.com/DominikWawak/bilo/actions/workflows/release.yml/badge.svg)](https://github.com/DominikWawak/bilo/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-black.svg)](LICENSE)
+![Version](https://img.shields.io/badge/version-0.1.0-black)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-black)
+
 Minimal note-taking app for creative professionals. Grayscale neobrutalist UI, rich-text editor with slash commands, calendar, local AI via Cursor/Kiro ACP, Jira tickets, and GitHub sync.
 
 Built with **Tauri 2** (Rust) + **React** + **Tiptap**.
@@ -12,10 +18,19 @@ Built with **Tauri 2** (Rust) + **React** + **Tiptap**.
 
 | Tool | Version |
 |------|---------|
-| macOS | Primary target (Reminders integration is macOS-only) |
 | Node.js | 20+ |
 | Rust | stable (`rustup default stable`) |
 | Cursor CLI or Kiro agent | For AI features |
+
+macOS Reminders and the `@` reminder badge are macOS-only. All other features work on Linux and Windows.
+
+### Linux — extra system dependencies
+
+```bash
+sudo apt-get install -y \
+  libwebkit2gtk-4.1-dev libappindicator3-dev \
+  librsvg2-dev patchelf libssl-dev libgtk-3-dev
+```
 
 ### Install & run (development)
 
@@ -33,22 +48,37 @@ npm run dev
 # → http://localhost:1420
 ```
 
-### Build a macOS app
+### Build
 
 ```bash
 npm run tauri build
-# .dmg in src-tauri/target/release/bundle/dmg/
 ```
+
+| Platform | Output |
+|----------|--------|
+| macOS | `.dmg` in `src-tauri/target/release/bundle/dmg/` |
+| Linux | `.AppImage` + `.deb` in `src-tauri/target/release/bundle/` |
+| Windows | `.msi` + NSIS installer in `src-tauri/target/release/bundle/` |
 
 ### Install from release
 
-Push a version tag to trigger a release build:
+Push a version tag to trigger a release build for all three platforms:
 
 ```bash
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
-GitHub Actions builds a universal macOS `.dmg` and attaches it to a draft release.
+GitHub Actions builds macOS (universal), Linux (AppImage + deb), and Windows (MSI + NSIS) and attaches all artifacts to a draft release.
+
+### macOS — "Bilo Notes is damaged and can't be opened"
+
+macOS Gatekeeper blocks unsigned apps downloaded from the internet. Run this once in Terminal after moving the app to `/Applications`:
+
+```bash
+xattr -cr "/Applications/Bilo Notes.app"
+```
+
+Or right-click the `.app` → **Open** to bypass the warning manually.
 
 ---
 
@@ -305,9 +335,20 @@ The script clears `localStorage`, seeds demo data, captures frames, and writes G
 
 ## Platform notes
 
-- **macOS**: Full feature set (Reminders, native PDF viewer, system browser)
-- **iOS**: Tauri mobile scaffold exists; not primary target yet
-- **AI latency**: First `cursor-agent` spawn can take several seconds; check terminal logs prefixed `[bilo/ai]`
+| Feature | macOS | Linux | Windows |
+|---------|-------|-------|---------|
+| Rich text editor | ✓ | ✓ | ✓ |
+| Calendar | ✓ | ✓ | ✓ |
+| Jira tickets | ✓ | ✓ | ✓ |
+| Search | ✓ | ✓ | ✓ |
+| AI (Cursor/Kiro) | ✓ | ✓ | ✓ |
+| GitHub sync | ✓ | ✓ | ✓ |
+| Reminders (`@`) | ✓ macOS only | — | — |
+| PDF inline viewer | ✓ | ✓ | ✓ |
+
+**macOS**: If you see "damaged and can't be opened", run `xattr -cr "/Applications/Bilo Notes.app"` in Terminal.
+
+**AI latency**: First `cursor-agent` or `kiro-agent` spawn can take several seconds. Check terminal logs prefixed `[bilo/ai]`.
 
 ---
 
