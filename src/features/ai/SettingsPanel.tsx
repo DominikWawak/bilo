@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import type { Note, Section } from '../notes/model'
 import type { AIAgent, AIRuntimeSettings } from './useAIRuntimeSettings'
 
 type Props = {
@@ -77,24 +78,33 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
     setImportMsg(null)
     try {
       const raw = await invoke<string>('read_notes_json', { path: jsonPath })
-      const data = JSON.parse(raw) as { notes?: unknown[]; sections?: unknown[] }
+      const data = JSON.parse(raw) as { notes?: Note[]; sections?: Section[] }
 
       const notesRaw = localStorage.getItem('bilo-notes-store')
       const sectionsRaw = localStorage.getItem('bilo-sections-store')
-      const existingNotes: { title?: string }[] = notesRaw ? JSON.parse(notesRaw) as { title?: string }[] : []
-      const existingSections: { name?: string }[] = sectionsRaw ? JSON.parse(sectionsRaw) as { name?: string }[] : []
-      const existingSecNames = new Set<string>(existingSections.map((s) => s.name ?? ''))
+      const existingNotes: Note[] = notesRaw ? JSON.parse(notesRaw) as Note[] : []
+      const existingSections: Section[] = sectionsRaw ? JSON.parse(sectionsRaw) as Section[] : []
+      const existingSecNames = new Set(existingSections.map((s) => s.name))
 
       let addedNotes = 0; let updatedNotes = 0; let addedSecs = 0
       for (const sec of data.sections ?? []) {
-        const s = sec as { name?: string }
-        if (!existingSecNames.has(s.name ?? '')) { existingSections.push(sec as { name?: string }); existingSecNames.add(s.name ?? ''); addedSecs++ }
+        if (!existingSecNames.has(sec.name)) {
+          existingSections.push(sec)
+          existingSecNames.add(sec.name)
+          addedSecs++
+        }
       }
       for (const note of data.notes ?? []) {
-        const n = note as { id?: string; title?: string }
-        const idx = existingNotes.findIndex((e) => { const en = e as { id?: string; title?: string }; return (n.id && en.id === n.id) || (en.title ?? '') === (n.title ?? '') })
-        if (idx === -1) { existingNotes.push(note as { title?: string }); addedNotes++ }
-        else { existingNotes[idx] = { ...existingNotes[idx], ...note }; updatedNotes++ }
+        const idx = existingNotes.findIndex(
+          (e) => (note.id && e.id === note.id) || e.title === note.title,
+        )
+        if (idx === -1) {
+          existingNotes.push(note)
+          addedNotes++
+        } else {
+          existingNotes[idx] = { ...existingNotes[idx], ...note }
+          updatedNotes++
+        }
       }
       localStorage.setItem('bilo-notes-store', JSON.stringify(existingNotes))
       localStorage.setItem('bilo-sections-store', JSON.stringify(existingSections))

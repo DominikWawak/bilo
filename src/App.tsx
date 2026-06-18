@@ -2,10 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { SearchPalette } from './features/search/SearchPalette'
 import { SettingsPanel } from './features/ai/SettingsPanel'
-import { organizeNote, aiQuery, suggestGrouping, summarizeCursorChat, type NoteContext } from './features/ai/aiService'
+import { organizeNote, aiQuery, summarizeCursorChat, type NoteContext } from './features/ai/aiService'
 import { useAIRuntimeSettings } from './features/ai/useAIRuntimeSettings'
 import { CalendarView } from './features/calendar/CalendarView'
-import { GroupingPreview, type GroupingSuggestion } from './features/notes/GroupingPreview'
 import { htmlToText, htmlFirstLine, markdownToHtml } from './features/notes/editorUtils'
 import { EditorPane } from './features/notes/EditorPane'
 import { NotesSidebar } from './features/notes/NotesSidebar'
@@ -35,8 +34,6 @@ function App() {
   const [activeView, setActiveView] = useState<ActiveView>('notes')
   const [organizePreviewBody, setOrganizePreviewBody] = useState<string | null>(null)
   const [organizeError, setOrganizeError] = useState<string | null>(null)
-  const [groupingSuggestions, setGroupingSuggestions] = useState<GroupingSuggestion[] | null>(null)
-  const [isGrouping, setIsGrouping] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -203,40 +200,6 @@ function App() {
     return aiQuery(question, aiServiceSettings, buildQueryContext())
   }
 
-  const handleGroupNotes = async () => {
-    if (isGrouping) return
-    setIsGrouping(true)
-    startTask('group', 'AI — grouping notes…')
-    try {
-      const notesText = notes
-        .map((n) => `id:${n.id} title:"${n.title || 'Untitled'}" snippet:"${htmlToText(n.body).slice(0, 120)}"`)
-        .join('\n')
-      const raw = await suggestGrouping(notesText, aiServiceSettings)
-      setGroupingSuggestions(raw)
-      finishTask('group')
-    } catch (e) {
-      finishTask('group', String(e))
-    } finally {
-      setIsGrouping(false)
-    }
-  }
-
-  const handleApplyGrouping = (accepted: GroupingSuggestion[]) => {
-    for (const s of accepted) {
-      const note = notes.find((n) => n.id === s.noteId)
-      if (!note) continue
-      let section = sections.find(
-        (sec) => sec.name.toLowerCase() === s.suggestedSectionName.toLowerCase(),
-      )
-      if (!section) {
-        section = createEmptySection(s.suggestedSectionName)
-        createSection(s.suggestedSectionName)
-      }
-      upsertNote({ ...note, sectionId: section.id, updatedAt: note.updatedAt })
-    }
-    setGroupingSuggestions(null)
-  }
-
   const handleImportCursor = async () => {
     if (isImporting) return
     const dir = aiSettings.cursorTranscriptsDir.trim() || '~/.cursor/projects'
@@ -337,16 +300,6 @@ function App() {
           sections={sections}
           onSelect={(id) => { setActiveNoteId(id); setActiveView('notes'); setSidebarOpen(false) }}
           onClose={() => setSearchOpen(false)}
-        />
-      )}
-
-      {groupingSuggestions && (
-        <GroupingPreview
-          suggestions={groupingSuggestions}
-          notes={notes}
-          sections={sections}
-          onApply={handleApplyGrouping}
-          onDismiss={() => setGroupingSuggestions(null)}
         />
       )}
 

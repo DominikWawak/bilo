@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/react'
 import { TiptapEditor } from './TiptapEditor'
-import { htmlToText, markdownToHtml, aiResponseToTiptapHtml } from './editorUtils'
+import { markdownToHtml, aiResponseToTiptapHtml } from './editorUtils'
 import type { Note, Section } from './model'
 import type { AIServiceSettings } from '../ai/aiService'
 
@@ -101,8 +101,8 @@ const AIQueryBar = ({ onSubmit, onClose, isLoading, enhanceCtx }: AIQueryBarProp
 export const EditorPane = ({
   note,
   sections: _sections,
-  aiSettings,
-  personalContext,
+  aiSettings: _aiSettings,
+  personalContext: _personalContext,
   onBodyChange,
   onTitleChange,
   onOrganizeRequest,

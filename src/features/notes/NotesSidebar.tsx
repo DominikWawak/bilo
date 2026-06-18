@@ -5,7 +5,7 @@ type NotesSidebarProps = {
   notes: Note[]
   sections: Section[]
   activeNoteId: string | null
-  activeView: 'notes' | 'calendar'
+  activeView: 'notes' | 'calendar' | 'settings'
   onSelectNote: (noteId: string) => void
   onDeleteNote: (noteId: string) => void
   onNewNote: (sectionId?: string | null) => void

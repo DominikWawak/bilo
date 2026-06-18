@@ -496,7 +496,7 @@ fn fetch_jira_ticket(
   })
 }
 
-/* ── Apple Reminders via osascript ──────────────────────────────── */
+/* ── Apple Reminders via osascript (macOS only) ─────────────────── */
 
 #[tauri::command]
 fn create_reminder(
@@ -507,6 +507,14 @@ fn create_reminder(
   hour: Option<i32>,
   minute: Option<i32>,
 ) -> Result<String, String> {
+  #[cfg(not(target_os = "macos"))]
+  {
+    let _ = (title, year, month, day, hour, minute);
+    return Err("Reminders are only supported on macOS.".to_string());
+  }
+
+  #[cfg(target_os = "macos")]
+  {
   // Use AppleScript property setters — locale-independent, always correct
   let due_block = match (year, month, day, hour, minute) {
     (Some(y), Some(mo), Some(d), Some(h), Some(mi)) => format!(
@@ -545,6 +553,7 @@ end tell"#,
   }
 
   Ok(format!("Reminder created: {title}"))
+  }
 }
 
 /* ── Cursor chat JSONL import ───────────────────────────────────── */
@@ -567,8 +576,10 @@ fn expand_tilde(path: &str) -> PathBuf {
 }
 
 fn dirs_home() -> Option<PathBuf> {
-  // HOME env var is the most reliable cross-platform way without adding dirs crate
-  std::env::var("HOME").ok().map(PathBuf::from)
+  std::env::var("HOME")
+    .ok()
+    .or_else(|| std::env::var("USERPROFILE").ok())
+    .map(PathBuf::from)
 }
 
 fn walk_jsonl_files(dir: &PathBuf, results: &mut Vec<PathBuf>) {
