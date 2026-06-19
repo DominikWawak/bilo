@@ -30,7 +30,11 @@ function App() {
 
   const { tasks, startTask, finishTask } = useTaskQueue()
 
-  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => notes[0]?.id ?? null)
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(() => {
+    if (notes.length > 0) return notes[0].id
+    // First launch — no notes yet; createNote runs after mount via useEffect below
+    return null
+  })
   const [activeView, setActiveView] = useState<ActiveView>('notes')
   const [organizePreviewBody, setOrganizePreviewBody] = useState<string | null>(null)
   const [organizeError, setOrganizeError] = useState<string | null>(null)
@@ -85,6 +89,15 @@ function App() {
       allNotesSummary: noteText.trim() ? `Current note:\n${noteText.slice(0, 2000)}` : undefined,
     }
   }
+
+  // Auto-create a note on first launch so the editor is never disabled
+  useEffect(() => {
+    if (notes.length === 0) {
+      const note = createNote(null)
+      setActiveNoteId(note.id)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const onKeydown = (event: KeyboardEvent) => {
