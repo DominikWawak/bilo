@@ -1,3 +1,5 @@
+<img src="public/favicon.svg" width="64" align="left" style="margin-right:16px;margin-bottom:4px">
+
 # Bilo Notes
 
 [![CI](https://github.com/DominikWawak/bilo/actions/workflows/ci.yml/badge.svg)](https://github.com/DominikWawak/bilo/actions/workflows/ci.yml)
