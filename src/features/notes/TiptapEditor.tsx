@@ -18,7 +18,7 @@ import { openUrl } from '../../openUrl'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
-const LogBlockView = ({ node, updateAttributes }: NodeViewProps) => {
+const LogBlockView = ({ node }: NodeViewProps) => {
   const { date } = node.attrs as { date: string }
 
   const label = (() => {
@@ -35,13 +35,6 @@ const LogBlockView = ({ node, updateAttributes }: NodeViewProps) => {
       <div className="log-block-header" contentEditable={false}>
         <span className="log-block-icon">◈</span>
         <span className="log-block-label">{label}</span>
-        <input
-          type="date"
-          className="log-block-date-picker"
-          value={date}
-          title="Change log date"
-          onChange={(e) => updateAttributes({ date: e.target.value })}
-        />
       </div>
       <NodeViewContent className="log-block-content" />
     </NodeViewWrapper>
@@ -1065,6 +1058,16 @@ type SlashCallbacks = {
   onKeyDown: (event: KeyboardEvent) => boolean
 }
 
+/** Returns {top, left} for a floating menu anchored to a caret DOMRect.
+ *  Flips above the caret if there isn't enough room below the viewport. */
+function menuPosition(rect: DOMRect, menuHeight = 300, gap = 6): { top: number; left: number } {
+  const spaceBelow = window.innerHeight - rect.bottom
+  const top = spaceBelow >= menuHeight + gap
+    ? rect.bottom + gap
+    : rect.top - menuHeight - gap
+  return { top: Math.max(4, top), left: rect.left }
+}
+
 const slashPluginKey = new PluginKey('slashCommands')
 
 function makeSlashExtension(callbacksRef: React.MutableRefObject<SlashCallbacks>, commands: SlashCommand[]) {
@@ -1431,9 +1434,7 @@ export const TiptapEditor = ({
       setMenuState({
         open: true,
         query,
-        position: rect
-          ? { top: rect.bottom + 4, left: rect.left }
-          : { top: 0, left: 0 },
+        position: rect ? menuPosition(rect) : { top: 0, left: 0 },
         items,
         selectedIndex: 0,
         commandProps: props,
@@ -1446,9 +1447,7 @@ export const TiptapEditor = ({
         items,
         selectedIndex: 0,
         commandProps: props, // keep range in sync as user types
-        position: rect
-          ? { top: rect.bottom + 4, left: rect.left }
-          : prev.position,
+        position: rect ? menuPosition(rect) : prev.position,
       }))
     },
     onExit: () => {
@@ -1494,9 +1493,7 @@ export const TiptapEditor = ({
       setAtMenuState({
         open: true,
         query,
-        position: rect
-          ? { top: rect.bottom + 4, left: rect.left }
-          : { top: 0, left: 0 },
+        position: rect ? menuPosition(rect) : { top: 0, left: 0 },
         commandProps: props,
       })
       setAtSelectedIndex(0)
@@ -1505,7 +1502,7 @@ export const TiptapEditor = ({
       setAtMenuState((prev) => ({
         ...prev,
         query,
-        position: rect ? { top: rect.bottom + 4, left: rect.left } : prev.position,
+        position: rect ? menuPosition(rect) : prev.position,
       }))
       setAtSelectedIndex(0)
     },

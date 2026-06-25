@@ -61,8 +61,8 @@ function extractLogBlocks(body: string): Array<{ date: string; heading: string; 
   }
 }
 
-type CalView = 'month' | 'week' | 'day'
-const VIEW_ORDER: CalView[] = ['day', 'week', 'month']
+type CalView = 'year' | 'month' | 'week' | 'day'
+const VIEW_ORDER: CalView[] = ['day', 'week', 'month', 'year']
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -119,24 +119,24 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
   const [manualView, setManualView] = useState<CalView | null>(null)
   const [cursor, setCursor] = useState(() => new Date())
 
-  // Auto view from container width
+  // Auto view from container width (year never auto-selects)
   const autoView: CalView =
     containerWidth >= 760 ? 'month' : containerWidth >= 460 ? 'week' : 'day'
 
-  // Effective view: user can only zoom in (finer detail), not out past auto
+  // Effective view: manual overrides auto; year is always manual
   const autoIdx = VIEW_ORDER.indexOf(autoView)
   const manualIdx = manualView ? VIEW_ORDER.indexOf(manualView) : autoIdx
-  const effectiveIdx = Math.min(manualIdx, autoIdx)
+  const effectiveIdx = manualView === 'year' ? VIEW_ORDER.indexOf('year') : Math.min(manualIdx, autoIdx)
   const view: CalView = VIEW_ORDER[effectiveIdx]
 
   const canZoomIn = effectiveIdx > 0
-  const canZoomOut = effectiveIdx < autoIdx
+  const canZoomOut = true // always allow zoom-out to year
 
   const zoomIn = () => setManualView(VIEW_ORDER[Math.max(0, effectiveIdx - 1)])
   const zoomOut = () => {
     const next = effectiveIdx + 1
-    if (next >= autoIdx) setManualView(null)
-    else setManualView(VIEW_ORDER[next])
+    if (next >= VIEW_ORDER.length) return
+    setManualView(VIEW_ORDER[next])
   }
 
   // Resize observer
@@ -191,7 +191,8 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
   const navigate = (dir: -1 | 1) => {
     setCursor((prev) => {
       const d = new Date(prev)
-      if (view === 'month') d.setMonth(d.getMonth() + dir)
+      if (view === 'year') d.setFullYear(d.getFullYear() + dir)
+      else if (view === 'month') d.setMonth(d.getMonth() + dir)
       else if (view === 'week') d.setDate(d.getDate() + dir * 7)
       else d.setDate(d.getDate() + dir)
       return d
@@ -202,6 +203,7 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
 
   // Period label
   const periodLabel = (() => {
+    if (view === 'year') return `${cursor.getFullYear()}`
     if (view === 'month') return `${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`
     if (view === 'week') {
       const ws = startOfWeek(cursor)
@@ -262,6 +264,14 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
 
       {/* Calendar body */}
       <div className="cal-body">
+        {view === 'year' && (
+          <YearView
+            cursor={cursor}
+            entriesByDate={entriesByDate}
+            todayKey={todayKey}
+            onClickMonth={(d) => { setCursor(d); setManualView('month') }}
+          />
+        )}
         {view === 'month' && (
           <MonthView
             cursor={cursor}
@@ -289,6 +299,70 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
           />
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Year view ─────────────────────────────────────────────────────────────────
+
+type YearViewProps = {
+  cursor: Date
+  entriesByDate: Map<string, CalEntry[]>
+  todayKey: string
+  onClickMonth: (d: Date) => void
+}
+
+const YearView = ({ cursor, entriesByDate, todayKey, onClickMonth }: YearViewProps) => {
+  const year = cursor.getFullYear()
+  const todayYear = parseInt(todayKey.slice(0, 4))
+  const todayMonth = parseInt(todayKey.slice(5, 7)) - 1
+
+  return (
+    <div className="cal-year-grid">
+      {MONTH_NAMES.map((name, monthIdx) => {
+        const days = monthGridDays(year, monthIdx)
+        // Count entries for this month
+        let dotCount = 0
+        days.forEach(d => {
+          if (d.getMonth() === monthIdx) {
+            const key = dk(d)
+            if (entriesByDate.has(key)) dotCount += entriesByDate.get(key)!.length
+          }
+        })
+        const isCurrentMonth = year === todayYear && monthIdx === todayMonth
+        return (
+          <button
+            key={name}
+            type="button"
+            className={`cal-year-month${isCurrentMonth ? ' cal-year-month--today' : ''}`}
+            onClick={() => onClickMonth(new Date(year, monthIdx, 1))}
+          >
+            <div className="cal-year-month-name">{name}</div>
+            <div className="cal-year-mini">
+              {['M','T','W','T','F','S','S'].map((d, i) => (
+                <span key={i} className="cal-year-dow">{d}</span>
+              ))}
+              {days.map((day, i) => {
+                const inMonth = day.getMonth() === monthIdx
+                const key = dk(day)
+                const hasEntry = inMonth && entriesByDate.has(key)
+                const isToday = key === todayKey
+                return (
+                  <span
+                    key={i}
+                    className={`cal-year-day${!inMonth ? ' cal-year-day--out' : ''}${isToday ? ' cal-year-day--today' : ''}${hasEntry ? ' cal-year-day--has' : ''}`}
+                  >
+                    {inMonth ? day.getDate() : ''}
+                  </span>
+                )
+              })}
+            </div>
+            {dotCount > 0 && (
+              <div className="cal-year-count">{dotCount} {dotCount === 1 ? 'entry' : 'entries'}</div>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }

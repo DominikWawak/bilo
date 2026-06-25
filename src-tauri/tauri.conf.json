@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Bilo Notes",
+  "productName": "Bilo",
   "version": "0.1.0",
   "identifier": "com.dominikwawak.bilo",
   "build": {
@@ -21,6 +21,14 @@
     ],
     "security": {
       "csp": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMzRjlBOUY1RUVEOEY0MjMKUldRajlOanU5YW41d3hYMEZRTUtHZU9vdFArL0k3R1VxOVFrS3ErdGFYYkR4MEZSUjMwUW81MEwK",
+      "endpoints": [
+        "https://github.com/DominikWawak/bilo/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {

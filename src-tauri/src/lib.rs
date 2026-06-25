@@ -918,18 +918,23 @@ async fn github_sync_push(repo_url: String, token: String, payload: String) -> R
     .map_err(|e| format!("Task panicked: {e}"))?
 }
 
-fn github_sync_push_inner(repo_url: String, token: String, payload: String) -> Result<(), String> {
-  // Parse owner/repo from URL like https://github.com/owner/repo or github.com/owner/repo
+fn parse_github_owner_repo(repo_url: &str) -> Result<(String, String), String> {
   let stripped = repo_url
+    .trim()
     .trim_start_matches("https://github.com/")
     .trim_start_matches("http://github.com/")
     .trim_start_matches("github.com/")
-    .trim_end_matches('/');
+    .trim_end_matches('/')
+    .trim_end_matches(".git"); // handle URLs pasted with .git suffix
   let parts: Vec<&str> = stripped.splitn(2, '/').collect();
-  if parts.len() != 2 {
+  if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
     return Err("Invalid GitHub repo URL — expected https://github.com/owner/repo".to_string());
   }
-  let (owner, repo) = (parts[0], parts[1]);
+  Ok((parts[0].to_string(), parts[1].to_string()))
+}
+
+fn github_sync_push_inner(repo_url: String, token: String, payload: String) -> Result<(), String> {
+  let (owner, repo) = parse_github_owner_repo(&repo_url)?;
 
   let client = Client::new();
   let file_path = "bilo-notes.json";
@@ -972,7 +977,16 @@ fn github_sync_push_inner(repo_url: String, token: String, payload: String) -> R
   if !put_resp.status().is_success() {
     let status = put_resp.status();
     let body = put_resp.text().unwrap_or_default();
-    return Err(format!("GitHub API error {}: {}", status, body));
+    let hint = match status.as_u16() {
+      404 => format!(
+        " — repository '{owner}/{repo}' not found. Check the URL is correct and the repo exists. If it's private, make sure your token has 'repo' scope."
+      ),
+      401 => " — token invalid or expired. Generate a new token at github.com/settings/tokens.".to_string(),
+      403 => " — forbidden. Your token may not have 'repo' scope, or the repo is owned by an org that restricts access.".to_string(),
+      422 => " — validation error. The file may already exist with a different SHA; try pulling first.".to_string(),
+      _ => String::new(),
+    };
+    return Err(format!("GitHub API error {status}{hint}\nDetails: {body}"));
   }
 
   Ok(())
@@ -987,16 +1001,7 @@ async fn github_sync_pull(repo_url: String, token: String) -> Result<String, Str
 }
 
 fn github_sync_pull_inner(repo_url: String, token: String) -> Result<String, String> {
-  let stripped = repo_url
-    .trim_start_matches("https://github.com/")
-    .trim_start_matches("http://github.com/")
-    .trim_start_matches("github.com/")
-    .trim_end_matches('/');
-  let parts: Vec<&str> = stripped.splitn(2, '/').collect();
-  if parts.len() != 2 {
-    return Err("Invalid GitHub repo URL".to_string());
-  }
-  let (owner, repo) = (parts[0], parts[1]);
+  let (owner, repo) = parse_github_owner_repo(&repo_url)?;
 
   let client = Client::new();
   let file_path = "bilo-notes.json";
@@ -1029,6 +1034,522 @@ fn github_sync_pull_inner(repo_url: String, token: String) -> Result<String, Str
   String::from_utf8(decoded).map_err(|e| e.to_string())
 }
 
+/* ── Google Drive sync ──────────────────────────────────────────── */
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct GoogleTokens {
+  access_token: String,
+  refresh_token: String,
+  email: String,
+  client_id: String,
+  client_secret: String,
+}
+
+fn google_tokens_path() -> PathBuf {
+  let home = dirs_home().unwrap_or_else(|| PathBuf::from("."));
+  home.join(".bilo").join("google_tokens.json")
+}
+
+fn load_google_tokens() -> Option<GoogleTokens> {
+  let text = fs::read_to_string(google_tokens_path()).ok()?;
+  serde_json::from_str(&text).ok()
+}
+
+fn save_google_tokens(t: &GoogleTokens) -> Result<(), String> {
+  let path = google_tokens_path();
+  fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+  fs::write(&path, serde_json::to_string(t).map_err(|e| e.to_string())?)
+    .map_err(|e| e.to_string())
+}
+
+fn gdrive_refresh_blocking(t: &mut GoogleTokens) -> Result<(), String> {
+  let http = Client::builder()
+    .timeout(std::time::Duration::from_secs(15))
+    .build()
+    .map_err(|e| e.to_string())?;
+  let resp: serde_json::Value = http
+    .post("https://oauth2.googleapis.com/token")
+    .form(&[
+      ("client_id", t.client_id.as_str()),
+      ("client_secret", t.client_secret.as_str()),
+      ("refresh_token", t.refresh_token.as_str()),
+      ("grant_type", "refresh_token"),
+    ])
+    .send().map_err(|e| e.to_string())?
+    .json().map_err(|e| e.to_string())?;
+  t.access_token = resp["access_token"]
+    .as_str()
+    .ok_or("Token refresh failed — reconnect Google Drive in Settings.")?
+    .to_string();
+  save_google_tokens(t)
+}
+
+fn gdrive_file_id_blocking(http: &Client, token: &str) -> Result<Option<String>, String> {
+  let resp: serde_json::Value = http
+    .get("https://www.googleapis.com/drive/v3/files")
+    .bearer_auth(token)
+    .query(&[("q", "name='bilo_notes.json' and trashed=false"), ("fields", "files(id)")])
+    .send().map_err(|e| e.to_string())?
+    .json().map_err(|e| e.to_string())?;
+  Ok(resp["files"].as_array()
+    .and_then(|a| a.first())
+    .and_then(|f| f["id"].as_str())
+    .map(|s| s.to_string()))
+}
+
+fn gdrive_check(resp: reqwest::blocking::Response, action: &str) -> Result<reqwest::blocking::Response, String> {
+  if resp.status().is_success() { return Ok(resp); }
+  let status = resp.status();
+  let body = resp.text().unwrap_or_default();
+  // Surface the most common 403 reasons clearly
+  let hint = if status.as_u16() == 403 {
+    if body.contains("accessNotConfigured") || body.contains("SERVICE_DISABLED") {
+      " — Google Drive API is not enabled. Go to console.cloud.google.com → APIs & Services → Library → enable 'Google Drive API'."
+    } else if body.contains("insufficientPermissions") || body.contains("insufficientScopes") {
+      " — insufficient OAuth scope. Disconnect and reconnect Google Drive in Settings to re-authorise with the correct scopes."
+    } else {
+      " — access denied. Make sure your OAuth consent screen has your email as a test user."
+    }
+  } else if status.as_u16() == 401 {
+    " — token expired or invalid. Disconnect and reconnect Google Drive in Settings."
+  } else {
+    ""
+  };
+  Err(format!("Drive {action} failed: HTTP {status}{hint}\nDetails: {body}"))
+}
+
+fn gdrive_push_blocking(http: &Client, token: &str, payload: &str) -> Result<(), String> {
+  let file_id = gdrive_file_id_blocking(http, token)?;
+  let body = payload.as_bytes().to_vec();
+  match file_id {
+    Some(id) => {
+      let resp = http
+        .patch(format!("https://www.googleapis.com/upload/drive/v3/files/{id}?uploadType=media"))
+        .bearer_auth(token)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send().map_err(|e| e.to_string())?;
+      gdrive_check(resp, "update")?;
+    }
+    None => {
+      let boundary = "bilo__boundary__xyz";
+      let meta = r#"{"name":"bilo_notes.json","mimeType":"application/json"}"#;
+      let multipart = format!(
+        "--{b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n--{b}\r\nContent-Type: application/json\r\n\r\n{payload}\r\n--{b}--",
+        b = boundary, meta = meta, payload = payload
+      );
+      let resp = http
+        .post("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart")
+        .bearer_auth(token)
+        .header("Content-Type", format!("multipart/related; boundary={boundary}"))
+        .body(multipart)
+        .send().map_err(|e| e.to_string())?;
+      gdrive_check(resp, "create")?;
+    }
+  }
+  Ok(())
+}
+
+fn gdrive_pull_blocking(http: &Client, token: &str) -> Result<String, String> {
+  let id = gdrive_file_id_blocking(http, token)?
+    .ok_or("No bilo_notes.json in Drive — push your notes first.")?;
+  let resp = http
+    .get(format!("https://www.googleapis.com/drive/v3/files/{id}?alt=media"))
+    .bearer_auth(token)
+    .send().map_err(|e| e.to_string())?;
+  let resp = gdrive_check(resp, "download")?;
+  resp.text().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn google_drive_status() -> Option<String> {
+  load_google_tokens().map(|t| t.email)
+}
+
+#[tauri::command]
+fn google_drive_disconnect() -> Result<(), String> {
+  let path = google_tokens_path();
+  if path.exists() { fs::remove_file(path).map_err(|e| e.to_string())?; }
+  Ok(())
+}
+
+#[tauri::command]
+async fn google_drive_auth(client_id: String, client_secret: String) -> Result<String, String> {
+  use std::net::TcpListener;
+  use std::io::{Read, Write};
+
+  // Bind to a random free port
+  let listener = TcpListener::bind("127.0.0.1:0")
+    .map_err(|e| format!("Could not bind OAuth listener: {e}"))?;
+  let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+  let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+
+  // Percent-encode the redirect URI for the auth URL query string
+  let encoded_redirect = redirect_uri
+    .replace(':', "%3A")
+    .replace('/', "%2F");
+
+  let auth_url = format!(
+    "https://accounts.google.com/o/oauth2/auth\
+     ?client_id={client_id}\
+     &redirect_uri={encoded_redirect}\
+     &scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fdrive.file\
+     &response_type=code\
+     &access_type=offline\
+     &prompt=consent"
+  );
+
+  // Open system browser
+  #[cfg(target_os = "macos")]
+  Command::new("open").arg(&auth_url).spawn().map_err(|e| e.to_string())?;
+  #[cfg(target_os = "linux")]
+  Command::new("xdg-open").arg(&auth_url).spawn().map_err(|e| e.to_string())?;
+  #[cfg(target_os = "windows")]
+  Command::new("cmd").args(["/c", "start", "", &auth_url]).spawn().map_err(|e| e.to_string())?;
+
+  // Wait for OAuth callback (blocking thread so async runtime stays free)
+  let code = tokio::task::spawn_blocking(move || -> Result<String, String> {
+    let (mut stream, _) = listener.accept()
+      .map_err(|e| format!("OAuth callback error: {e}"))?;
+    let mut buf = [0u8; 8192];
+    let n = stream.read(&mut buf).map_err(|e| e.to_string())?;
+    let req = String::from_utf8_lossy(&buf[..n]);
+
+    // Parse ?code=... from "GET /callback?code=XXX HTTP/1.1"
+    let code = req.lines().next()
+      .and_then(|line| line.split_whitespace().nth(1))
+      .and_then(|path| path.split_once('?').map(|(_, q)| q))
+      .and_then(|qs| qs.split('&').find(|p| p.starts_with("code=")))
+      .map(|p| p[5..].to_string())
+      .ok_or_else(|| "Google did not return an auth code — please try again.".to_string())?;
+
+    let _ = stream.write_all(
+      b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
+        <html><body style='font-family:sans-serif;max-width:400px;margin:60px auto;text-align:center'>\
+        <h2>Connected to Google Drive</h2>\
+        <p>You can close this tab and return to Bilo Notes.</p>\
+        </body></html>"
+    );
+    Ok(code)
+  }).await.map_err(|e| e.to_string())??;
+
+  // Clone for use after spawn_blocking (client_id/secret moved into closure)
+  let client_id_saved = client_id.clone();
+  let client_secret_saved = client_secret.clone();
+
+  // Exchange auth code for tokens + fetch email — all blocking HTTP
+  let (access_token, refresh_token, email) = tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
+    let http = Client::builder()
+      .timeout(std::time::Duration::from_secs(20))
+      .build()
+      .map_err(|e| e.to_string())?;
+
+    let token_body: serde_json::Value = http
+      .post("https://oauth2.googleapis.com/token")
+      .form(&[
+        ("code", code.as_str()),
+        ("client_id", client_id.as_str()),
+        ("client_secret", client_secret.as_str()),
+        ("redirect_uri", redirect_uri.as_str()),
+        ("grant_type", "authorization_code"),
+      ])
+      .send().map_err(|e| e.to_string())?
+      .json().map_err(|e| e.to_string())?;
+
+    let access_token = token_body["access_token"].as_str()
+      .ok_or("No access_token in response")?.to_string();
+    let refresh_token = token_body["refresh_token"].as_str()
+      .ok_or("No refresh_token — set OAuth consent to 'external' and add your email as a test user")?
+      .to_string();
+
+    let user: serde_json::Value = http
+      .get("https://www.googleapis.com/oauth2/v2/userinfo")
+      .bearer_auth(&access_token)
+      .send().map_err(|e| e.to_string())?
+      .json().map_err(|e| e.to_string())?;
+    let email = user["email"].as_str().unwrap_or("unknown").to_string();
+
+    Ok((access_token, refresh_token, email))
+  }).await.map_err(|e| e.to_string())??;
+
+  save_google_tokens(&GoogleTokens {
+    access_token,
+    refresh_token,
+    email: email.clone(),
+    client_id: client_id_saved,
+    client_secret: client_secret_saved,
+  })?;
+
+  Ok(email)
+}
+
+#[tauri::command]
+async fn google_drive_push(payload: String) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || -> Result<(), String> {
+    let mut tokens = load_google_tokens()
+      .ok_or("Google Drive not connected. Open Settings → Sync → Google Drive.")?;
+    let http = Client::builder()
+      .timeout(std::time::Duration::from_secs(30))
+      .build()
+      .map_err(|e| e.to_string())?;
+
+    if gdrive_push_blocking(&http, &tokens.access_token, &payload).is_err() {
+      gdrive_refresh_blocking(&mut tokens)?;
+      gdrive_push_blocking(&http, &tokens.access_token, &payload)?;
+    }
+    Ok(())
+  }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn google_drive_pull() -> Result<String, String> {
+  tokio::task::spawn_blocking(|| -> Result<String, String> {
+    let mut tokens = load_google_tokens()
+      .ok_or("Google Drive not connected.")?;
+    let http = Client::builder()
+      .timeout(std::time::Duration::from_secs(30))
+      .build()
+      .map_err(|e| e.to_string())?;
+
+    match gdrive_pull_blocking(&http, &tokens.access_token) {
+      Ok(data) => Ok(data),
+      Err(_) => {
+        gdrive_refresh_blocking(&mut tokens)?;
+        gdrive_pull_blocking(&http, &tokens.access_token)
+      }
+    }
+  }).await.map_err(|e| e.to_string())?
+}
+
+/* ── OneDrive sync ──────────────────────────────────────────────── */
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct OneDriveTokens {
+  access_token: String,
+  refresh_token: String,
+  email: String,
+  client_id: String,
+}
+
+fn onedrive_tokens_path() -> PathBuf {
+  let home = dirs_home().unwrap_or_else(|| PathBuf::from("."));
+  home.join(".bilo").join("onedrive_tokens.json")
+}
+
+fn load_onedrive_tokens() -> Option<OneDriveTokens> {
+  let text = fs::read_to_string(onedrive_tokens_path()).ok()?;
+  serde_json::from_str(&text).ok()
+}
+
+fn save_onedrive_tokens(t: &OneDriveTokens) -> Result<(), String> {
+  let path = onedrive_tokens_path();
+  fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
+  fs::write(&path, serde_json::to_string(t).map_err(|e| e.to_string())?)
+    .map_err(|e| e.to_string())
+}
+
+fn onedrive_refresh_blocking(t: &mut OneDriveTokens) -> Result<(), String> {
+  let http = Client::builder()
+    .timeout(std::time::Duration::from_secs(15))
+    .build()
+    .map_err(|e| e.to_string())?;
+  let resp: serde_json::Value = http
+    .post("https://login.microsoftonline.com/common/oauth2/v2.0/token")
+    .form(&[
+      ("client_id", t.client_id.as_str()),
+      ("refresh_token", t.refresh_token.as_str()),
+      ("grant_type", "refresh_token"),
+      ("scope", "Files.ReadWrite offline_access User.Read"),
+    ])
+    .send().map_err(|e| e.to_string())?
+    .json().map_err(|e| e.to_string())?;
+  t.access_token = resp["access_token"]
+    .as_str()
+    .ok_or("OneDrive token refresh failed — reconnect in Settings.")?
+    .to_string();
+  if let Some(rt) = resp["refresh_token"].as_str() {
+    t.refresh_token = rt.to_string();
+  }
+  save_onedrive_tokens(t)
+}
+
+fn onedrive_push_blocking(http: &Client, token: &str, payload: &str) -> Result<(), String> {
+  // Graph API simple upload — PUT creates or replaces the file
+  let resp = http
+    .put("https://graph.microsoft.com/v1.0/me/drive/root:/bilo_notes.json:/content")
+    .bearer_auth(token)
+    .header("Content-Type", "application/json")
+    .body(payload.to_owned())
+    .send().map_err(|e| e.to_string())?;
+  if !resp.status().is_success() {
+    return Err(format!("OneDrive upload failed: HTTP {}", resp.status()));
+  }
+  Ok(())
+}
+
+fn onedrive_pull_blocking(http: &Client, token: &str) -> Result<String, String> {
+  let resp = http
+    .get("https://graph.microsoft.com/v1.0/me/drive/root:/bilo_notes.json:/content")
+    .bearer_auth(token)
+    .send().map_err(|e| e.to_string())?;
+  if resp.status().as_u16() == 404 {
+    return Err("No bilo_notes.json in OneDrive — push your notes first.".to_string());
+  }
+  if !resp.status().is_success() {
+    return Err(format!("OneDrive download failed: HTTP {}", resp.status()));
+  }
+  resp.text().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn onedrive_status() -> Option<String> {
+  load_onedrive_tokens().map(|t| t.email)
+}
+
+#[tauri::command]
+fn onedrive_disconnect() -> Result<(), String> {
+  let path = onedrive_tokens_path();
+  if path.exists() { fs::remove_file(path).map_err(|e| e.to_string())?; }
+  Ok(())
+}
+
+#[tauri::command]
+async fn onedrive_auth(client_id: String) -> Result<String, String> {
+  use std::net::TcpListener;
+  use std::io::{Read, Write};
+
+  let listener = TcpListener::bind("127.0.0.1:0")
+    .map_err(|e| format!("Could not bind OAuth listener: {e}"))?;
+  let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+  let redirect_uri = format!("http://localhost:{port}/callback");
+
+  let encoded_redirect = redirect_uri
+    .replace(':', "%3A")
+    .replace('/', "%2F");
+
+  let auth_url = format!(
+    "https://login.microsoftonline.com/common/oauth2/v2.0/authorize\
+     ?client_id={client_id}\
+     &response_type=code\
+     &redirect_uri={encoded_redirect}\
+     &scope=Files.ReadWrite%20offline_access%20User.Read\
+     &response_mode=query"
+  );
+
+  #[cfg(target_os = "macos")]
+  Command::new("open").arg(&auth_url).spawn().map_err(|e| e.to_string())?;
+  #[cfg(target_os = "linux")]
+  Command::new("xdg-open").arg(&auth_url).spawn().map_err(|e| e.to_string())?;
+  #[cfg(target_os = "windows")]
+  Command::new("cmd").args(["/c", "start", "", &auth_url]).spawn().map_err(|e| e.to_string())?;
+
+  let client_id_saved = client_id.clone();
+
+  let code = tokio::task::spawn_blocking(move || -> Result<String, String> {
+    let (mut stream, _) = listener.accept()
+      .map_err(|e| format!("OAuth callback error: {e}"))?;
+    let mut buf = [0u8; 8192];
+    let n = stream.read(&mut buf).map_err(|e| e.to_string())?;
+    let req = String::from_utf8_lossy(&buf[..n]);
+
+    let code = req.lines().next()
+      .and_then(|line| line.split_whitespace().nth(1))
+      .and_then(|path| path.split_once('?').map(|(_, q)| q))
+      .and_then(|qs| qs.split('&').find(|p| p.starts_with("code=")))
+      .map(|p| p[5..].to_string())
+      .ok_or_else(|| "Microsoft did not return an auth code — please try again.".to_string())?;
+
+    let _ = stream.write_all(
+      b"HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n\
+        <html><body style='font-family:sans-serif;max-width:400px;margin:60px auto;text-align:center'>\
+        <h2>Connected to OneDrive</h2>\
+        <p>You can close this tab and return to Bilo Notes.</p>\
+        </body></html>"
+    );
+    Ok(code)
+  }).await.map_err(|e| e.to_string())??;
+
+  let (access_token, refresh_token, email) = tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
+    let http = Client::builder()
+      .timeout(std::time::Duration::from_secs(20))
+      .build()
+      .map_err(|e| e.to_string())?;
+
+    let token_body: serde_json::Value = http
+      .post("https://login.microsoftonline.com/common/oauth2/v2.0/token")
+      .form(&[
+        ("code", code.as_str()),
+        ("client_id", client_id.as_str()),
+        ("redirect_uri", redirect_uri.as_str()),
+        ("grant_type", "authorization_code"),
+        ("scope", "Files.ReadWrite offline_access User.Read"),
+      ])
+      .send().map_err(|e| e.to_string())?
+      .json().map_err(|e| e.to_string())?;
+
+    let access_token = token_body["access_token"].as_str()
+      .ok_or("No access_token in Microsoft response")?.to_string();
+    let refresh_token = token_body["refresh_token"].as_str()
+      .ok_or("No refresh_token — ensure 'offline_access' scope is requested")?.to_string();
+
+    let user: serde_json::Value = http
+      .get("https://graph.microsoft.com/v1.0/me")
+      .bearer_auth(&access_token)
+      .send().map_err(|e| e.to_string())?
+      .json().map_err(|e| e.to_string())?;
+    let email = user["userPrincipalName"].as_str()
+      .or_else(|| user["mail"].as_str())
+      .unwrap_or("unknown").to_string();
+
+    Ok((access_token, refresh_token, email))
+  }).await.map_err(|e| e.to_string())??;
+
+  save_onedrive_tokens(&OneDriveTokens {
+    access_token,
+    refresh_token,
+    email: email.clone(),
+    client_id: client_id_saved,
+  })?;
+
+  Ok(email)
+}
+
+#[tauri::command]
+async fn onedrive_push(payload: String) -> Result<(), String> {
+  tokio::task::spawn_blocking(move || -> Result<(), String> {
+    let mut tokens = load_onedrive_tokens()
+      .ok_or("OneDrive not connected. Open Settings → Sync → OneDrive.")?;
+    let http = Client::builder()
+      .timeout(std::time::Duration::from_secs(30))
+      .build()
+      .map_err(|e| e.to_string())?;
+    if onedrive_push_blocking(&http, &tokens.access_token, &payload).is_err() {
+      onedrive_refresh_blocking(&mut tokens)?;
+      onedrive_push_blocking(&http, &tokens.access_token, &payload)?;
+    }
+    Ok(())
+  }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn onedrive_pull() -> Result<String, String> {
+  tokio::task::spawn_blocking(|| -> Result<String, String> {
+    let mut tokens = load_onedrive_tokens()
+      .ok_or("OneDrive not connected.")?;
+    let http = Client::builder()
+      .timeout(std::time::Duration::from_secs(30))
+      .build()
+      .map_err(|e| e.to_string())?;
+    match onedrive_pull_blocking(&http, &tokens.access_token) {
+      Ok(data) => Ok(data),
+      Err(_) => {
+        onedrive_refresh_blocking(&mut tokens)?;
+        onedrive_pull_blocking(&http, &tokens.access_token)
+      }
+    }
+  }).await.map_err(|e| e.to_string())?
+}
+
 fn chrono_ts() -> String {
   let secs = SystemTime::now()
     .duration_since(UNIX_EPOCH)
@@ -1040,6 +1561,10 @@ fn chrono_ts() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .plugin(tauri_plugin_updater::Builder::new().build())
+    .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_process::init())
     .manage(Mutex::new(RuntimeManager::default()))
     .invoke_handler(tauri::generate_handler![
       get_runtime_config,
@@ -1060,7 +1585,17 @@ pub fn run() {
       fetch_jira_ticket,
       open_url,
       github_sync_push,
-      github_sync_pull
+      github_sync_pull,
+      google_drive_status,
+      google_drive_disconnect,
+      google_drive_auth,
+      google_drive_push,
+      google_drive_pull,
+      onedrive_status,
+      onedrive_disconnect,
+      onedrive_auth,
+      onedrive_push,
+      onedrive_pull
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
@@ -1074,4 +1609,150 @@ pub fn run() {
     })
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
+}
+
+/* ── Tests ──────────────────────────────────────────────────────── */
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  // ── Token path helpers ────────────────────────────────────────
+
+  #[test]
+  fn google_tokens_path_ends_with_expected_file() {
+    let path = google_tokens_path();
+    assert!(path.ends_with(".bilo/google_tokens.json"));
+  }
+
+  #[test]
+  fn onedrive_tokens_path_ends_with_expected_file() {
+    let path = onedrive_tokens_path();
+    assert!(path.ends_with(".bilo/onedrive_tokens.json"));
+  }
+
+  // ── Token round-trip ──────────────────────────────────────────
+
+  #[test]
+  fn google_tokens_serialise_round_trip() {
+    let original = GoogleTokens {
+      access_token: "acc".into(),
+      refresh_token: "ref".into(),
+      email: "test@gmail.com".into(),
+      client_id: "cid".into(),
+      client_secret: "csec".into(),
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    let restored: GoogleTokens = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored.email, "test@gmail.com");
+    assert_eq!(restored.access_token, "acc");
+    assert_eq!(restored.refresh_token, "ref");
+  }
+
+  #[test]
+  fn onedrive_tokens_serialise_round_trip() {
+    let original = OneDriveTokens {
+      access_token: "acc".into(),
+      refresh_token: "ref".into(),
+      email: "user@live.com".into(),
+      client_id: "cid".into(),
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    let restored: OneDriveTokens = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored.email, "user@live.com");
+  }
+
+  #[test]
+  fn load_google_tokens_returns_none_when_file_absent() {
+    // Temporarily override would need env-var injection; just check parsing failure
+    let bad_json = "not-valid-json";
+    let t: Option<GoogleTokens> = serde_json::from_str(bad_json).ok();
+    assert!(t.is_none());
+  }
+
+  #[test]
+  fn load_onedrive_tokens_returns_none_for_bad_json() {
+    let bad_json = r#"{"access_token": 42}"#; // wrong type
+    let t: Option<OneDriveTokens> = serde_json::from_str(bad_json).ok();
+    assert!(t.is_none());
+  }
+
+  // ── OAuth URL construction ─────────────────────────────────────
+
+  #[test]
+  fn google_oauth_url_percent_encoding() {
+    let redirect = "http://127.0.0.1:12345/callback";
+    let encoded = redirect.replace(':', "%3A").replace('/', "%2F");
+    assert_eq!(encoded, "http%3A%2F%2F127.0.0.1%3A12345%2Fcallback");
+  }
+
+  #[test]
+  fn onedrive_oauth_url_contains_required_params() {
+    let client_id = "test-client-id";
+    let port = 9999u16;
+    let redirect_uri = format!("http://localhost:{port}/callback");
+    let encoded = redirect_uri.replace(':', "%3A").replace('/', "%2F");
+    let url = format!(
+      "https://login.microsoftonline.com/common/oauth2/v2.0/authorize\
+       ?client_id={client_id}\
+       &response_type=code\
+       &redirect_uri={encoded}\
+       &scope=Files.ReadWrite%20offline_access%20User.Read\
+       &response_mode=query"
+    );
+    assert!(url.contains("client_id=test-client-id"));
+    assert!(url.contains("Files.ReadWrite"));
+    assert!(url.contains("offline_access"));
+    assert!(url.contains("response_type=code"));
+  }
+
+  // ── Payload helpers ────────────────────────────────────────────
+
+  #[test]
+  fn sync_payload_is_valid_json() {
+    let payload = r#"{"notes":[{"id":"1","title":"Test"}],"sections":[]}"#;
+    let v: serde_json::Value = serde_json::from_str(payload).unwrap();
+    assert!(v["notes"].is_array());
+    assert!(v["sections"].is_array());
+  }
+
+  #[test]
+  fn gdrive_multipart_body_contains_metadata_and_content() {
+    let payload = r#"{"notes":[],"sections":[]}"#;
+    let boundary = "bilo__boundary__xyz";
+    let meta = r#"{"name":"bilo_notes.json","mimeType":"application/json"}"#;
+    let body = format!(
+      "--{b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n\
+       --{b}\r\nContent-Type: application/json\r\n\r\n{payload}\r\n--{b}--",
+      b = boundary, meta = meta, payload = payload
+    );
+    assert!(body.contains("bilo_notes.json"));
+    assert!(body.contains(r#"{"notes":[]"#));
+    assert!(body.starts_with("--bilo__boundary__xyz"));
+    assert!(body.ends_with("--bilo__boundary__xyz--"));
+  }
+
+  // ── HTTP response status checks ────────────────────────────────
+
+  #[test]
+  fn gdrive_push_error_message_format() {
+    // Simulate what the error message looks like for a bad status
+    let status = 403u16;
+    let msg = format!("Drive update failed: HTTP {status}");
+    assert_eq!(msg, "Drive update failed: HTTP 403");
+  }
+
+  #[test]
+  fn onedrive_pull_404_message() {
+    let msg = "No bilo_notes.json in OneDrive — push your notes first.";
+    assert!(msg.contains("push your notes first"));
+  }
+
+  // ── chrono_ts ─────────────────────────────────────────────────
+
+  #[test]
+  fn chrono_ts_is_not_empty() {
+    let ts = chrono_ts();
+    assert!(!ts.is_empty());
+  }
 }

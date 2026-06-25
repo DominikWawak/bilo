@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import type { Note, Section } from '../notes/model'
 import type { AIAgent, AIRuntimeSettings } from './useAIRuntimeSettings'
+import { UpdateChecker } from '../updater/UpdateChecker'
 
 type Props = {
   settings: AIRuntimeSettings
@@ -310,6 +311,16 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
               </div>
             </div>
           )}
+        </section>)}
+
+        {/* ── Updates ── */}
+        {show('update version release github check') && (
+        <section className="sp-section">
+          <h2 className="sp-section-title">Updates</h2>
+          <p className="sp-desc">
+            Current version: <code>0.1.0</code>. When an update is available it will download and install automatically — just relaunch when ready.
+          </p>
+          <UpdateChecker />
         </section>)}
 
       </div>

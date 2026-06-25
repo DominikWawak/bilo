@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
@@ -11,5 +11,11 @@ export default defineConfig({
   clearScreen: false,
   build: {
     chunkSizeWarningLimit: 1000,
+  },
+  test: {
+    environment: 'node',
+    globals: true,
+    setupFiles: ['src/__tests__/setup.ts'],
+    include: ['src/__tests__/**/*.test.ts'],
   },
 })

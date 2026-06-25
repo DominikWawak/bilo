@@ -17,6 +17,8 @@ type NotesSidebarProps = {
   onOpenCalendar: () => void
   onOpenSettings: () => void
   onOpenSearch: () => void
+  sidebarPinned?: boolean
+  onTogglePin?: () => void
 }
 
 type NoteItemProps = {
@@ -203,6 +205,8 @@ export const NotesSidebar = ({
   onOpenCalendar,
   onOpenSettings,
   onOpenSearch,
+  sidebarPinned = false,
+  onTogglePin,
 }: NotesSidebarProps) => {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const toggleCollapse = (id: string) =>
@@ -237,6 +241,15 @@ export const NotesSidebar = ({
         <div className="sidebar-topbar-actions">
           <button type="button" className="sidebar-search-btn" onClick={onOpenSearch} title="Search (⌘K)" aria-label="Search">
             ⌕
+          </button>
+          <button
+            type="button"
+            className={`sidebar-icon-btn sidebar-pin-btn${sidebarPinned ? ' active' : ''}`}
+            onClick={onTogglePin}
+            title={sidebarPinned ? 'Unpin sidebar (keep floating)' : 'Pin sidebar open'}
+            aria-label={sidebarPinned ? 'Unpin sidebar' : 'Pin sidebar'}
+          >
+            {sidebarPinned ? '▣' : '▤'}
           </button>
           <button type="button" className="new-note-btn" onClick={() => onNewNote(null)}>+</button>
         </div>

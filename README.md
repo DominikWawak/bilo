@@ -242,6 +242,71 @@ Data keys synced: `bilo-notes-store`, `bilo-sections-store`.
 
 ---
 
+## Sync encryption
+
+**Settings → Sync Encryption** — optional, off by default.
+
+When enabled, your notes are encrypted **before** being uploaded to any cloud service (GitHub, Google Drive, OneDrive). Even if someone gains access to your repository or cloud storage, the data is unreadable without your passphrase.
+
+### Algorithm
+
+| Step | Detail |
+|------|--------|
+| Key derivation | PBKDF2-SHA-256, **600,000 iterations**, random 128-bit salt |
+| Cipher | **AES-256-GCM** — authenticated encryption (tamper-proof) |
+| IV | Random 96-bit, generated fresh on every push |
+| Passphrase storage | **Never stored** — held in memory for the session only |
+
+### What is uploaded
+
+```json
+{
+  "encrypted": true,
+  "salt": "<base64, random, not secret>",
+  "iv": "<base64, random, not secret>",
+  "ciphertext": "<base64 — your notes, unreadable without the passphrase>"
+}
+```
+
+### How to use
+
+1. Go to **Settings → Sync Encryption** and toggle **Encrypt synced data**
+2. Enter a strong passphrase (the longer the better — it is never stored)
+3. Push to any sync target — the uploaded file will be encrypted
+4. On another device, toggle encryption on, enter the **same passphrase**, then Pull
+
+> **Important:** if you forget your passphrase, the synced backup cannot be recovered. Store it in a password manager.
+
+### Security properties
+
+- Random salt + IV per push means identical notes produce different ciphertexts every time
+- AES-GCM authentication detects any tampering — corrupted or modified data will fail to decrypt rather than silently producing garbage
+- Key derivation (600k PBKDF2 iterations) makes brute-forcing the passphrase computationally expensive even with the full ciphertext
+- The passphrase is cleared from memory when you close the settings panel or restart the app
+
+---
+
+## Google Drive sync
+
+**Settings → Google Drive**
+
+Sync your notes to a private file (`bilo_notes.json`) in your personal Google Drive.
+
+### Setup (one-time)
+
+1. Go to [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials)
+2. Create a project → **Enable** the *Google Drive API*
+3. Create an **OAuth 2.0 Client ID** → Application type: **Desktop app**
+4. Under *OAuth consent screen*, set publishing status to **Testing** and add your email as a test user
+5. Copy the **Client ID** and **Client Secret** into Settings → Google Drive → paste and click **Connect Google Drive**
+6. Your browser opens for sign-in — return to the app when done
+
+After connecting, use **↑ Push** to upload and **↓ Pull** to restore notes on any device.
+
+> Tokens are stored locally at `~/.bilo/google_tokens.json` and refresh automatically.
+
+---
+
 ## Import
 
 **Settings → Import**
