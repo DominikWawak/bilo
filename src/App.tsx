@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
 import { SearchPalette } from './features/search/SearchPalette'
 import { SettingsPanel } from './features/ai/SettingsPanel'
@@ -41,6 +41,28 @@ function App() {
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState<string | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarPinned, setSidebarPinned] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(280)
+  const isResizing = useRef(false)
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isResizing.current = true
+    const startX = e.clientX
+    const startW = sidebarWidth
+    const onMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return
+      const next = Math.min(480, Math.max(200, startW + ev.clientX - startX))
+      setSidebarWidth(next)
+    }
+    const onUp = () => {
+      isResizing.current = false
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [sidebarWidth])
   const [searchOpen, setSearchOpen] = useState(false)
 
   const activeNote = useMemo(
@@ -268,29 +290,35 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell${sidebarPinned ? ' sidebar-pinned' : ''}`}>
       <button
         type="button"
         className="corner-toggle"
-        onClick={() => setSidebarOpen((open) => !open)}
+        onClick={() => {
+          if (sidebarPinned) { setSidebarPinned(false); setSidebarOpen(false) }
+          else setSidebarOpen((open) => !open)
+        }}
         aria-label="Toggle sidebar"
       >
-        {sidebarOpen ? '✕' : '≡'}
+        {(sidebarOpen || sidebarPinned) ? '✕' : '≡'}
       </button>
 
       <div
-        className={`sidebar-backdrop ${sidebarOpen ? 'visible' : ''}`}
+        className={`sidebar-backdrop ${sidebarOpen && !sidebarPinned ? 'visible' : ''}`}
         onClick={() => setSidebarOpen(false)}
         aria-hidden="true"
       />
 
-      <aside className={`sidebar-drawer ${sidebarOpen ? 'open' : ''}`}>
+      <aside
+        className={`sidebar-drawer ${(sidebarOpen || sidebarPinned) ? 'open' : ''}`}
+        style={{ width: sidebarWidth }}
+      >
         <NotesSidebar
           notes={notes}
           sections={sections}
           activeNoteId={activeNoteId}
           activeView={activeView}
-          onSelectNote={(id) => { setActiveNoteId(id); setActiveView('notes'); setSidebarOpen(false) }}
+          onSelectNote={(id) => { setActiveNoteId(id); setActiveView('notes'); if (!sidebarPinned) setSidebarOpen(false) }}
           onDeleteNote={handleDeleteNote}
           onNewNote={handleNewNote}
           onNewSection={() => createSection('Section')}
@@ -298,13 +326,16 @@ function App() {
           onDeleteSection={removeSection}
           onToggleCalendar={toggleCalendar}
           onMoveNote={handleMoveNote}
-          onOpenCalendar={() => { setActiveView('calendar'); setSidebarOpen(false) }}
-          onOpenSettings={() => { setActiveView('settings'); setSidebarOpen(false) }}
-          onOpenSearch={() => { setSearchOpen(true); setSidebarOpen(false) }}
+          onOpenCalendar={() => { setActiveView('calendar'); if (!sidebarPinned) setSidebarOpen(false) }}
+          onOpenSettings={() => { setActiveView('settings'); if (!sidebarPinned) setSidebarOpen(false) }}
+          onOpenSearch={() => { setSearchOpen(true); if (!sidebarPinned) setSidebarOpen(false) }}
+          sidebarPinned={sidebarPinned}
+          onTogglePin={() => { setSidebarPinned(p => !p); setSidebarOpen(true) }}
         />
         {importProgress && (
           <div className="import-progress">{importProgress}</div>
         )}
+        <div className="sidebar-resize-handle" onMouseDown={startResize} aria-hidden="true" />
       </aside>
 
       {searchOpen && (
