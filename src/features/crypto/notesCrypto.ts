@@ -24,9 +24,9 @@ export interface EncryptedPayload {
   ciphertext: string
 }
 
-function toBase64(buf: ArrayBuffer): string {
+function toBase64(buf: ArrayBuffer | Uint8Array): string {
   // Chunked to avoid call-stack overflow on large buffers
-  const bytes = new Uint8Array(buf)
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf)
   let binary = ''
   for (let i = 0; i < bytes.length; i += 8192) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 8192))
@@ -34,11 +34,11 @@ function toBase64(buf: ArrayBuffer): string {
   return btoa(binary)
 }
 
-function fromBase64(b64: string): Uint8Array {
-  return Uint8Array.from(atob(b64), c => c.charCodeAt(0))
+function fromBase64(b64: string): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(atob(b64), c => c.charCodeAt(0)) as Uint8Array<ArrayBuffer>
 }
 
-async function deriveKey(passphrase: string, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveKey(passphrase: string, salt: Uint8Array<ArrayBuffer>): Promise<CryptoKey> {
   const enc = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']
@@ -60,8 +60,8 @@ export async function encryptPayload(
   plaintext: string,
   passphrase: string
 ): Promise<EncryptedPayload> {
-  const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES))
-  const iv   = crypto.getRandomValues(new Uint8Array(IV_BYTES))
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES)) as Uint8Array<ArrayBuffer>
+  const iv   = crypto.getRandomValues(new Uint8Array(IV_BYTES)) as Uint8Array<ArrayBuffer>
   const key  = await deriveKey(passphrase, salt)
 
   const enc        = new TextEncoder()
@@ -87,9 +87,9 @@ export async function decryptPayload(
   payload: EncryptedPayload,
   passphrase: string
 ): Promise<string> {
-  const salt       = fromBase64(payload.salt)
-  const iv         = fromBase64(payload.iv)
-  const ciphertext = fromBase64(payload.ciphertext)
+  const salt       = fromBase64(payload.salt) as Uint8Array<ArrayBuffer>
+  const iv         = fromBase64(payload.iv) as Uint8Array<ArrayBuffer>
+  const ciphertext = fromBase64(payload.ciphertext) as Uint8Array<ArrayBuffer>
   const key        = await deriveKey(passphrase, salt)
 
   let plainBuf: ArrayBuffer
