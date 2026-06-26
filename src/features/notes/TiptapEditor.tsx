@@ -10,6 +10,7 @@ import { TableCell } from '@tiptap/extension-table-cell'
 import { TableHeader } from '@tiptap/extension-table-header'
 import TaskList from '@tiptap/extension-task-list'
 import TaskItem from '@tiptap/extension-task-item'
+import Highlight from '@tiptap/extension-highlight'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { openUrl } from '../../openUrl'
@@ -971,7 +972,7 @@ const buildCommands = (
     : []),
 ]
 
-/* ── AI bubble toolbar (floating on text selection) ─────────────── */
+/* ── Bubble toolbar (floating on text selection) ─────────────────── */
 
 type EnhanceContext = { text: string; from: number; to: number }
 
@@ -980,11 +981,18 @@ type AIBubbleToolbarProps = {
   onEnhance: (ctx: EnhanceContext) => void
 }
 
-const BUBBLE_H = 32
+const BUBBLE_H = 36
 
 const AIBubbleToolbar = ({ editor, onEnhance }: AIBubbleToolbarProps) => {
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
   const [ctx, setCtx] = useState<EnhanceContext | null>(null)
+  const [linkMode, setLinkMode] = useState(false)
+  const [linkVal, setLinkVal] = useState('')
+  const linkInputRef = useRef<HTMLInputElement>(null)
+  const linkModeRef = useRef(false)
+
+  // Keep ref in sync so the blur handler (closure) can read the latest value
+  useEffect(() => { linkModeRef.current = linkMode }, [linkMode])
 
   useEffect(() => {
     if (!editor) return
@@ -992,51 +1000,134 @@ const AIBubbleToolbar = ({ editor, onEnhance }: AIBubbleToolbarProps) => {
     const update = () => {
       const { from, to, empty } = editor.state.selection
       if (empty || from === to) {
-        setCoords(null)
-        setCtx(null)
+        // Don't collapse toolbar if the link input has focus
+        if (!linkModeRef.current) {
+          setCoords(null)
+          setCtx(null)
+        }
         return
       }
       try {
         const text = editor.state.doc.textBetween(from, to, ' ').trim()
-        if (!text) { setCoords(null); setCtx(null); return }
+        if (!text) { if (!linkModeRef.current) { setCoords(null); setCtx(null) } return }
 
         const startC = editor.view.coordsAtPos(from)
         const endC   = editor.view.coordsAtPos(to)
 
-        // Centre horizontally on the selection, clamped to viewport
         const midX = (startC.left + endC.left) / 2
-        const btnW = 90   // approximate button width
-        const clampedLeft = Math.max(btnW / 2 + 8, Math.min(midX, window.innerWidth - btnW / 2 - 8))
+        const toolbarW = 320
+        const clampedLeft = Math.max(toolbarW / 2 + 8, Math.min(midX, window.innerWidth - toolbarW / 2 - 8))
 
-        // Prefer above; flip below if near top
-        const wantTop = startC.top - BUBBLE_H - 6
-        const top = wantTop < 8 ? endC.bottom + 6 : wantTop
+        const wantTop = startC.top - BUBBLE_H - 8
+        const top = wantTop < 8 ? endC.bottom + 8 : wantTop
 
         setCoords({ top, left: clampedLeft })
         setCtx({ text, from, to })
       } catch {
-        setCoords(null)
-        setCtx(null)
+        if (!linkModeRef.current) { setCoords(null); setCtx(null) }
       }
     }
 
+    const onBlur = () => {
+      // If link input is open, keep toolbar alive — it needs focus
+      if (linkModeRef.current) return
+      setCoords(null)
+      setCtx(null)
+      setLinkMode(false)
+    }
+
     editor.on('selectionUpdate', update)
-    editor.on('blur', () => { setCoords(null); setCtx(null) })
-    return () => { editor.off('selectionUpdate', update) }
+    editor.on('blur', onBlur)
+    return () => {
+      editor.off('selectionUpdate', update)
+      editor.off('blur', onBlur)
+    }
   }, [editor])
+
+  useEffect(() => {
+    if (linkMode) {
+      const existing = editor?.getAttributes('link').href ?? ''
+      setLinkVal(existing)
+      setTimeout(() => linkInputRef.current?.focus(), 30)
+    }
+  }, [linkMode, editor])
 
   if (!coords || !ctx) return null
 
+  const isBold   = editor?.isActive('bold')   ?? false
+  const isItalic = editor?.isActive('italic') ?? false
+  const isStrike = editor?.isActive('strike') ?? false
+  const isCode   = editor?.isActive('code')   ?? false
+  const isMark   = editor?.isActive('highlight') ?? false
+  const isLink   = editor?.isActive('link')   ?? false
+
+  const applyLink = () => {
+    if (!editor) return
+    const url = linkVal.trim()
+    if (!url) {
+      editor.chain().focus().extendMarkRange('link').unsetLink().run()
+    } else {
+      editor.chain().focus().extendMarkRange('link').setLink({ href: url.startsWith('http') ? url : `https://${url}` }).run()
+    }
+    setLinkMode(false)
+  }
+
   return (
-    <button
-      type="button"
-      className="ai-bubble-enhance"
+    <div
+      className="bubble-toolbar"
       style={{ position: 'fixed', top: coords.top, left: coords.left, transform: 'translateX(-50%)', zIndex: 200 }}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onEnhance(ctx)}
     >
-      Enhance
-    </button>
+      {linkMode ? (
+        <div className="bubble-link-row">
+          <span className="bubble-link-label">↗</span>
+          <input
+            ref={linkInputRef}
+            className="bubble-link-input"
+            placeholder="https://…"
+            value={linkVal}
+            onChange={(e) => setLinkVal(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); applyLink() }
+              if (e.key === 'Escape') { setLinkMode(false); editor?.commands.focus() }
+            }}
+            onBlur={(e) => {
+              // If focus moves outside the toolbar entirely, close everything
+              const toolbar = e.currentTarget.closest('.bubble-toolbar')
+              if (toolbar && e.relatedTarget && toolbar.contains(e.relatedTarget as Node)) return
+              // Small delay so clicks on Apply/Remove register first
+              setTimeout(() => { setLinkMode(false); setCoords(null); setCtx(null) }, 150)
+            }}
+          />
+          <button type="button" className="bubble-link-confirm" title="Apply (Enter)" onClick={applyLink}>Apply</button>
+          {isLink && (
+            <button
+              type="button"
+              className="bubble-link-remove"
+              title="Remove link"
+              onClick={() => { editor?.chain().focus().unsetLink().run(); setLinkMode(false) }}
+            >Remove</button>
+          )}
+        </div>
+      ) : (
+        <>
+          <button type="button" className={`bubble-btn${isBold   ? ' active' : ''}`} onClick={() => editor?.chain().focus().toggleBold().run()}   title="Bold (⌘B)"><b>B</b></button>
+          <button type="button" className={`bubble-btn${isItalic ? ' active' : ''}`} onClick={() => editor?.chain().focus().toggleItalic().run()} title="Italic (⌘I)"><i>I</i></button>
+          <button type="button" className={`bubble-btn${isStrike ? ' active' : ''}`} onClick={() => editor?.chain().focus().toggleStrike().run()} title="Strikethrough"><s>S</s></button>
+          <button type="button" className={`bubble-btn${isCode   ? ' active' : ''}`} onClick={() => editor?.chain().focus().toggleCode().run()}   title="Inline code"><code>`</code></button>
+          <button type="button" className={`bubble-btn bubble-btn-mark${isMark ? ' active' : ''}`} onClick={() => editor?.chain().focus().toggleHighlight().run()} title="Highlight">▲</button>
+          <div className="bubble-divider" />
+          <button type="button" className={`bubble-btn bubble-btn-link${isLink ? ' active' : ''}`} onClick={() => setLinkMode(true)} title="Add link">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </button>
+          <div className="bubble-divider" />
+          <button type="button" className="bubble-btn bubble-btn-enhance" onClick={() => onEnhance(ctx)} title="Enhance with AI">✦ AI</button>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -1607,6 +1698,7 @@ export const TiptapEditor = ({
       TableHeader,
       TaskList,
       TaskItem.configure({ nested: true }),
+      Highlight.configure({ multicolor: false }),
       ReminderMark,
       LogBlock,
       JiraTicketNode,
