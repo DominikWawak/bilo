@@ -1094,7 +1094,7 @@ const AIBubbleToolbar = ({ editor, onEnhance }: AIBubbleToolbarProps) => {
             onBlur={(e) => {
               // If focus moves outside the toolbar entirely, close everything
               const toolbar = e.currentTarget.closest('.bubble-toolbar')
-              if (toolbar && e.relatedTarget && toolbar.contains(e.relatedTarget as Node)) return
+              if (toolbar && e.relatedTarget && toolbar.contains(e.relatedTarget as Element)) return
               // Small delay so clicks on Apply/Remove register first
               setTimeout(() => { setLinkMode(false); setCoords(null); setCtx(null) }, 150)
             }}
