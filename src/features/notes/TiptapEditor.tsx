@@ -1131,6 +1131,78 @@ const AIBubbleToolbar = ({ editor, onEnhance }: AIBubbleToolbarProps) => {
   )
 }
 
+/* ── Table toolbar (appears when cursor is inside a table) ──────── */
+
+const TableToolbar = ({ editor }: { editor: Editor | null }) => {
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null)
+
+  useEffect(() => {
+    if (!editor) return
+
+    const update = () => {
+      const inTable = editor.isActive('table')
+      if (!inTable) { setCoords(null); return }
+
+      // Position above the table DOM node
+      try {
+        const { from } = editor.state.selection
+        const domNode = editor.view.domAtPos(from).node as HTMLElement
+        const tableEl = domNode.nodeType === 1
+          ? (domNode as HTMLElement).closest('table') ?? (domNode as HTMLElement)
+          : (domNode.parentElement?.closest('table') ?? domNode.parentElement)
+
+        if (!tableEl) { setCoords(null); return }
+        const rect = tableEl.getBoundingClientRect()
+        const TOOLBAR_H = 32
+        const top = Math.max(8, rect.top - TOOLBAR_H - 6)
+        const left = rect.left + rect.width / 2
+        setCoords({ top, left })
+      } catch {
+        setCoords(null)
+      }
+    }
+
+    editor.on('selectionUpdate', update)
+    editor.on('transaction', update)
+    editor.on('blur', () => setCoords(null))
+    return () => {
+      editor.off('selectionUpdate', update)
+      editor.off('transaction', update)
+    }
+  }, [editor])
+
+  if (!coords || !editor) return null
+
+  const btn = (label: string, title: string, action: () => void, danger = false) => (
+    <button
+      key={title}
+      type="button"
+      className={`tbl-btn${danger ? ' tbl-btn-danger' : ''}`}
+      title={title}
+      onMouseDown={(e) => { e.preventDefault(); action() }}
+    >{label}</button>
+  )
+
+  return (
+    <div
+      className="table-toolbar"
+      style={{ position: 'fixed', top: coords.top, left: coords.left, transform: 'translateX(-50%)', zIndex: 200 }}
+    >
+      <span className="tbl-group-label">Col</span>
+      {btn('+◀', 'Add column before', () => editor.chain().focus().addColumnBefore().run())}
+      {btn('+▶', 'Add column after',  () => editor.chain().focus().addColumnAfter().run())}
+      {btn('✕', 'Delete column',       () => editor.chain().focus().deleteColumn().run(), true)}
+      <div className="tbl-divider" />
+      <span className="tbl-group-label">Row</span>
+      {btn('+▲', 'Add row before', () => editor.chain().focus().addRowBefore().run())}
+      {btn('+▼', 'Add row after',  () => editor.chain().focus().addRowAfter().run())}
+      {btn('✕', 'Delete row',       () => editor.chain().focus().deleteRow().run(), true)}
+      <div className="tbl-divider" />
+      {btn('⌫ table', 'Delete whole table', () => editor.chain().focus().deleteTable().run(), true)}
+    </div>
+  )
+}
+
 /* ── Slash command Tiptap extension ────────────────────────────── */
 
 type SlashMenuProps = {
@@ -2009,6 +2081,7 @@ export const TiptapEditor = ({
         editor={editor ?? null}
         onEnhance={handleEnhance}
       />
+      <TableToolbar editor={editor ?? null} />
 
       <SlashMenu
         open={menuState.open}
