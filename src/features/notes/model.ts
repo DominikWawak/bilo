@@ -5,6 +5,7 @@ export type Note = {
   linkedDateKey: string | null
   sectionId: string | null
   updatedAt: number
+  calendarOnly?: boolean  // true = created from calendar, hidden in notes sidebar
 }
 
 export const createEmptyNote = (sectionId: string | null = null): Note => ({
@@ -14,6 +15,7 @@ export const createEmptyNote = (sectionId: string | null = null): Note => ({
   linkedDateKey: null,
   sectionId,
   updatedAt: Date.now(),
+  calendarOnly: false,
 })
 
 export type Section = {

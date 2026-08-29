@@ -76,7 +76,12 @@ function App() {
     [sections],
   )
   const calendarNotes = useMemo(
-    () => notes.filter((n) => n.sectionId !== null && calendarSectionIds.has(n.sectionId)),
+    () => notes.filter((n) =>
+      // Notes in calendar-enabled sections
+      (n.sectionId !== null && calendarSectionIds.has(n.sectionId)) ||
+      // Notes explicitly pinned to a calendar date via the + button
+      n.linkedDateKey !== null
+    ),
     [notes, calendarSectionIds],
   )
 
@@ -150,6 +155,13 @@ function App() {
 
   const handleNewNote = (sectionId?: string | null) => {
     const note = createNote(sectionId ?? null)
+    setActiveNoteId(note.id)
+    setActiveView('notes')
+  }
+
+  const handleNewNoteForDate = (dateKey: string) => {
+    const note = createNote(null)
+    upsertNote({ ...note, linkedDateKey: dateKey, calendarOnly: true })
     setActiveNoteId(note.id)
     setActiveView('notes')
   }
@@ -314,7 +326,7 @@ function App() {
         style={{ width: sidebarWidth }}
       >
         <NotesSidebar
-          notes={notes}
+          notes={notes.filter((n) => !n.calendarOnly)}
           sections={sections}
           activeNoteId={activeNoteId}
           activeView={activeView}
@@ -365,6 +377,7 @@ function App() {
                 notes={calendarNotes}
                 onSelectNote={handleSelectNoteFromCalendar}
                 onClose={() => setActiveView('notes')}
+                onNewNote={handleNewNoteForDate}
               />
             </div>
 

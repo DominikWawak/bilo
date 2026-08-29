@@ -1344,7 +1344,13 @@ const formatReminderBadge = (d: Date): string => {
   const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
   if (isToday) return `Today ${time}`
   if (isTomorrow) return `Tomorrow ${time}`
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + time
+  const differentYear = d.getFullYear() !== today.getFullYear()
+  const dateStr = d.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    ...(differentYear ? { year: 'numeric' } : {}),
+  })
+  return `${dateStr} ${time}`
 }
 
 const atPluginKey = new PluginKey('atReminder')

@@ -10,6 +10,7 @@ type CalEntry = {
   logHeading?: string   // set when this entry comes from a /log block inside a note
   isReminder?: boolean  // set when this is a @reminder badge
   reminderTime?: string // HH:MM for reminder entries
+  isPinned?: boolean    // set when note was created via calendar + button (has linkedDateKey)
 }
 
 /** Parse @reminder badges from a note body — returns {date, label} pairs */
@@ -109,11 +110,12 @@ type Props = {
   notes: Note[]
   onSelectNote: (id: string) => void
   onClose: () => void
+  onNewNote: (dateKey: string) => void
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
+export const CalendarView = ({ notes, onSelectNote, onClose, onNewNote }: Props) => {
   const containerRef = useRef<HTMLDivElement>(null)
   const [containerWidth, setContainerWidth] = useState(900)
   const [manualView, setManualView] = useState<CalView | null>(null)
@@ -169,7 +171,12 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
       } else {
         const key = note.linkedDateKey ?? dk(new Date(note.updatedAt))
         const snippet = htmlSnippet(note.body, 120)
-        add(key, { noteId: note.id, title: note.title || 'Untitled', snippet })
+        add(key, {
+          noteId: note.id,
+          title: note.title || 'Untitled',
+          snippet,
+          isPinned: note.linkedDateKey !== null,
+        })
       }
 
       // Also add any @reminder badges as separate calendar entries
@@ -279,6 +286,7 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
             todayKey={todayKey}
             onSelectNote={onSelectNote}
             onClickDay={(d) => { setCursor(d); setManualView('day') }}
+            onNewNote={onNewNote}
           />
         )}
         {view === 'week' && (
@@ -288,6 +296,7 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
             todayKey={todayKey}
             onSelectNote={onSelectNote}
             onClickDay={(d) => { setCursor(d); setManualView('day') }}
+            onNewNote={onNewNote}
           />
         )}
         {view === 'day' && (
@@ -296,6 +305,7 @@ export const CalendarView = ({ notes, onSelectNote, onClose }: Props) => {
             entriesByDate={entriesByDate}
             todayKey={todayKey}
             onSelectNote={onSelectNote}
+            onNewNote={onNewNote}
           />
         )}
       </div>
@@ -375,9 +385,10 @@ type MonthViewProps = {
   todayKey: string
   onSelectNote: (id: string) => void
   onClickDay: (d: Date) => void
+  onNewNote: (dateKey: string) => void
 }
 
-const MonthView = ({ cursor, entriesByDate, todayKey, onSelectNote, onClickDay }: MonthViewProps) => {
+const MonthView = ({ cursor, entriesByDate, todayKey, onSelectNote, onClickDay, onNewNote }: MonthViewProps) => {
   const days = monthGridDays(cursor.getFullYear(), cursor.getMonth())
   const curMonth = cursor.getMonth()
 
@@ -404,13 +415,21 @@ const MonthView = ({ cursor, entriesByDate, todayKey, onSelectNote, onClickDay }
               ].join(' ')}
               onClick={() => onClickDay(d)}
             >
-              <span className="cal-day-num">{d.getDate()}</span>
+              <div className="cal-cell-header">
+                <span className="cal-day-num">{d.getDate()}</span>
+                <button
+                  type="button"
+                  className="cal-add-btn"
+                  title={`New note for ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })}`}
+                  onClick={(ev) => { ev.stopPropagation(); onNewNote(key) }}
+                >+</button>
+              </div>
               <div className="cal-day-notes">
                 {dayEntries.slice(0, 3).map((e, i) => (
                   <button
                     key={`${e.noteId}-${i}`}
                     type="button"
-                    className={`cal-note-pill${e.logHeading ? ' cal-log-pill' : ''}${e.isReminder ? ' cal-reminder-pill' : ''}`}
+                    className={`cal-note-pill${e.logHeading ? ' cal-log-pill' : ''}${e.isReminder ? ' cal-reminder-pill' : ''}${e.isPinned ? ' cal-pinned-pill' : ''}`}
                     onClick={(ev) => { ev.stopPropagation(); onSelectNote(e.noteId) }}
                     title={e.isReminder ? `🔔 ${e.reminderTime}` : e.logHeading ? `${e.title} — ${e.logHeading}` : e.title}
                   >
@@ -437,9 +456,10 @@ type WeekViewProps = {
   todayKey: string
   onSelectNote: (id: string) => void
   onClickDay: (d: Date) => void
+  onNewNote: (dateKey: string) => void
 }
 
-const WeekView = ({ cursor, entriesByDate, todayKey, onSelectNote, onClickDay }: WeekViewProps) => {
+const WeekView = ({ cursor, entriesByDate, todayKey, onSelectNote, onClickDay, onNewNote }: WeekViewProps) => {
   const ws = startOfWeek(cursor)
   const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i))
 
@@ -461,6 +481,12 @@ const WeekView = ({ cursor, entriesByDate, todayKey, onSelectNote, onClickDay }:
               <span className={['cal-week-day-num', isToday ? 'cal-today-num' : ''].join(' ')}>
                 {d.getDate()}
               </span>
+              <button
+                type="button"
+                className="cal-add-btn"
+                title="New note for this day"
+                onClick={(ev) => { ev.stopPropagation(); onNewNote(key) }}
+              >+</button>
             </div>
             <div className="cal-week-notes">
               {dayEntries.map((e, idx) => (
@@ -497,6 +523,7 @@ type DayViewProps = {
   entriesByDate: Map<string, CalEntry[]>
   todayKey: string
   onSelectNote: (id: string) => void
+  onNewNote: (dateKey: string) => void
 }
 
 const DayEntryCard = ({ entry, onSelectNote }: { entry: CalEntry; onSelectNote: (id: string) => void }) => {
@@ -552,7 +579,7 @@ const DayEntryCard = ({ entry, onSelectNote }: { entry: CalEntry; onSelectNote: 
   )
 }
 
-const DayView = ({ cursor, entriesByDate, todayKey, onSelectNote }: DayViewProps) => {
+const DayView = ({ cursor, entriesByDate, todayKey, onSelectNote, onNewNote }: DayViewProps) => {
   const key = dk(cursor)
   const dayEntries = entriesByDate.get(key) ?? []
   const isToday = key === todayKey
@@ -564,10 +591,13 @@ const DayView = ({ cursor, entriesByDate, todayKey, onSelectNote }: DayViewProps
           {DAY_LABELS[(cursor.getDay() + 6) % 7]}, {MONTH_NAMES[cursor.getMonth()]} {cursor.getDate()}
         </span>
         {isToday && <span className="cal-today-badge">Today</span>}
+        <button type="button" className="cal-add-btn cal-add-btn-day" onClick={() => onNewNote(key)}>
+          + New note
+        </button>
       </div>
       <div className="cal-day-list">
         {dayEntries.length === 0 ? (
-          <p className="cal-empty">No entries on this day</p>
+          <p className="cal-empty">No entries on this day — click "+ New note" to add one</p>
         ) : (
           dayEntries.map((e, i) => (
             <DayEntryCard key={`${e.noteId}-${i}`} entry={e} onSelectNote={onSelectNote} />
