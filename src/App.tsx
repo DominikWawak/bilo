@@ -14,6 +14,7 @@ import { useSectionsStore } from './features/notes/useSectionsStore'
 import { TaskStatusBar } from './features/tasks/TaskStatusBar'
 import { useTaskQueue } from './features/tasks/useTaskQueue'
 import { invoke } from '@tauri-apps/api/core'
+import { check } from '@tauri-apps/plugin-updater'
 
 type ActiveView = 'notes' | 'calendar' | 'settings'
 
@@ -43,6 +44,7 @@ function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarPinned, setSidebarPinned] = useState(false)
   const [sidebarWidth, setSidebarWidth] = useState(280)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
   const isResizing = useRef(false)
 
   const startResize = useCallback((e: React.MouseEvent) => {
@@ -117,13 +119,39 @@ function App() {
     }
   }
 
-  // Auto-create a note on first launch so the editor is never disabled
+  // Auto-create a welcome note on first launch
   useEffect(() => {
     if (notes.length === 0) {
       const note = createNote(null)
+      const welcomeBody = [
+        '<h1>Welcome to Bilo</h1>',
+        '<p>A minimal writing space — close to paper, close to a typewriter.</p>',
+        '<h2>Keyboard shortcuts</h2>',
+        '<ul>',
+        '<li><strong>⌘N</strong> — New note</li>',
+        '<li><strong>⌘K</strong> — Search notes</li>',
+        '<li><strong>⌘F</strong> — Find in note</li>',
+        '<li><strong>⌘⇧, / ⌘⇧.</strong> — Decrease / increase text size</li>',
+        '</ul>',
+        '<h2>While writing</h2>',
+        '<p>Type <strong>/</strong> on a blank line to insert headings, lists, tasks, log entries, and more.</p>',
+        '<p>Type <strong>@</strong> to set a reminder on a note.</p>',
+        '<h2>Calendar</h2>',
+        '<p>Use <strong>/log</strong> to create dated entries that show on the calendar. Open it from the sidebar.</p>',
+        '<p>Delete this note whenever you\'re ready. Happy writing.</p>',
+      ].join('')
+      upsertNote({ ...note, title: 'Welcome to Bilo', body: welcomeBody, updatedAt: Date.now() })
       setActiveNoteId(note.id)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Silent background update check on launch — production builds only
+  useEffect(() => {
+    if (import.meta.env.DEV) return
+    check()
+      .then((update) => { if (update) setUpdateAvailable(true) })
+      .catch(() => { /* silently ignore — no network or no release yet */ })
   }, [])
 
   useEffect(() => {
@@ -307,7 +335,7 @@ function App() {
         type="button"
         className="corner-toggle"
         onClick={() => {
-          if (sidebarPinned) { setSidebarPinned(false); setSidebarOpen(false) }
+          if (sidebarPinned) { setSidebarPinned(false) }
           else setSidebarOpen((open) => !open)
         }}
         aria-label="Toggle sidebar"
@@ -343,6 +371,7 @@ function App() {
           onOpenSearch={() => { setSearchOpen(true); if (!sidebarPinned) setSidebarOpen(false) }}
           sidebarPinned={sidebarPinned}
           onTogglePin={() => { setSidebarPinned(p => !p); setSidebarOpen(true) }}
+          updateAvailable={updateAvailable}
         />
         {importProgress && (
           <div className="import-progress">{importProgress}</div>

@@ -117,7 +117,10 @@ export const EditorPane = ({
   const titleInputRef = useRef<HTMLTextAreaElement>(null)
   const [aiQueryOpen, setAiQueryOpen] = useState(false)
   const [aiQueryLoading, setAiQueryLoading] = useState(false)
-  const [zoom, setZoom] = useState(1)
+  const [proseSize, setProseSize] = useState<number>(() => {
+    const saved = localStorage.getItem('bilo-prose-size')
+    return saved ? Number(saved) : 17
+  })
   const [aiAnswer, setAiAnswer] = useState<string | null>(null)
   const [findOpen, setFindOpen] = useState(false)
   const [findQuery, setFindQuery] = useState('')
@@ -167,11 +170,24 @@ export const EditorPane = ({
     editorRef.current?.commands.focus()
   }
 
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLElement>) => {
-    if (!e.ctrlKey) return
-    e.preventDefault()
-    setZoom((prev) => Math.min(2.5, Math.max(0.5, prev - e.deltaY * 0.002)))
+  const changeProseSize = useCallback((delta: number) => {
+    setProseSize((prev) => {
+      const next = Math.min(24, Math.max(12, prev + delta))
+      localStorage.setItem('bilo-prose-size', String(next))
+      return next
+    })
   }, [])
+
+  useEffect(() => {
+    const onKeydown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey) {
+        if (e.key === ',' || e.key === '<') { e.preventDefault(); changeProseSize(-1) }
+        if (e.key === '.' || e.key === '>') { e.preventDefault(); changeProseSize(1) }
+      }
+    }
+    window.addEventListener('keydown', onKeydown)
+    return () => window.removeEventListener('keydown', onKeydown)
+  }, [changeProseSize])
 
 
   const handleAiQuerySubmit = async (question: string) => {
@@ -231,7 +247,7 @@ export const EditorPane = ({
   }
 
   return (
-    <section className="editor-pane minimal" onWheel={handleWheel}>
+    <section className="editor-pane minimal">
       {/* Scrollable writing surface */}
       <div className="editor-scroll">
         {/* In-note find bar (Cmd+F) */}
@@ -288,7 +304,7 @@ export const EditorPane = ({
             {formatNoteDate(note.updatedAt)}
           </time>
         </div>
-        <div className="editor-zoom-canvas" style={{ zoom }}>
+        <div className="editor-zoom-canvas" style={{ '--prose-size': `${proseSize}px` } as React.CSSProperties}>
           <TiptapEditor
             content={note.body}
             onChange={onBodyChange}
@@ -372,8 +388,32 @@ export const EditorPane = ({
           </div>
         )}
 
-        {/* Thin spacer — keeps bottom-bar visible even with no buttons */}
-        <div className="editor-actions-spacer" />
+        {/* Font size controls */}
+        <div className="prose-size-controls">
+          <button
+            type="button"
+            className="prose-size-btn"
+            onClick={() => changeProseSize(-1)}
+            disabled={proseSize <= 12}
+            title="Smaller text (⌘⇧,)"
+            aria-label="Decrease text size"
+          >A−</button>
+          <button
+            type="button"
+            className="prose-size-btn prose-size-reset"
+            onClick={() => { setProseSize(17); localStorage.setItem('bilo-prose-size', '17') }}
+            title="Reset text size"
+            aria-label="Reset text size"
+          >{proseSize}px</button>
+          <button
+            type="button"
+            className="prose-size-btn"
+            onClick={() => changeProseSize(1)}
+            disabled={proseSize >= 24}
+            title="Larger text (⌘⇧.)"
+            aria-label="Increase text size"
+          >A+</button>
+        </div>
       </div>
     </section>
   )

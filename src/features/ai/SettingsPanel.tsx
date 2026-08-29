@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 import type { Note, Section } from '../notes/model'
 import type { AIAgent, AIRuntimeSettings } from './useAIRuntimeSettings'
 import { UpdateChecker } from '../updater/UpdateChecker'
@@ -18,6 +19,11 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
   const [importMsg, setImportMsg] = useState<string | null>(null)
   const [cursorEnabled, setCursorEnabled] = useState(false)
   const [agentsAvailable, setAgentsAvailable] = useState<{ cursor: boolean; kiro: boolean } | null>(null)
+  const [appVersion, setAppVersion] = useState<string>('…')
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion('unknown'))
+  }, [])
   const [search, setSearch] = useState('')
 
   const q = search.toLowerCase().trim()
@@ -318,7 +324,7 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
         <section className="sp-section">
           <h2 className="sp-section-title">Updates</h2>
           <p className="sp-desc">
-            Current version: <code>0.1.0</code>. When an update is available it will download and install automatically — just relaunch when ready.
+            Current version: <code>{appVersion}</code>. Click below to check for updates — you'll be prompted to download and relaunch when one is found.
           </p>
           <UpdateChecker />
         </section>)}

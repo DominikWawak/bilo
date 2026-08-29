@@ -554,6 +554,18 @@ button.danger:hover {
 .sidebar-footer-btn.settings-gear {
   font-size: 14px;
   padding: 4px 8px;
+  position: relative;
+}
+
+.settings-gear-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--black);
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 .new-note-btn {
@@ -2210,9 +2222,8 @@ button.danger:hover {
 /* ── Note title area ─────────────────────────────────────────────── */
 .note-title-area {
   position: relative;
-  margin-bottom: 4px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--grey-1);
+  margin-bottom: 8px;
+  padding-bottom: 16px;
 }
 
 .note-title-input {
@@ -2359,6 +2370,45 @@ button.danger:hover {
 
 .editor-actions-spacer {
   height: 6px;
+}
+
+/* ── Prose size controls ─────────────────────────────────────────── */
+.prose-size-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 12px 4px;
+  justify-content: flex-end;
+}
+
+.prose-size-btn {
+  border: none;
+  background: transparent;
+  color: var(--grey-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 5px;
+  cursor: pointer;
+  border-radius: 0;
+  line-height: 1;
+  transition: color 120ms;
+  user-select: none;
+}
+
+.prose-size-btn:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.prose-size-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.prose-size-reset {
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  min-width: 28px;
+  text-align: center;
 }
 
 /* Status lines */
@@ -2633,14 +2683,13 @@ button.danger:hover {
 
 .editor-zoom-canvas {
   width: 100%;
-  transform-origin: top left;
 }
 
 .tiptap-editor .ProseMirror {
   outline: none;
   font-family: var(--font-note);
-  font-size: 17px;
-  line-height: 1.82;
+  font-size: var(--prose-size, 17px);
+  line-height: 1.85;
   letter-spacing: 0.005em;
   color: var(--text);
   min-height: 60vh;
@@ -2654,9 +2703,9 @@ button.danger:hover {
   margin-top: 0;
 }
 
-/* Headings */
+/* Headings — em units so they scale with --prose-size */
 .tiptap-editor .ProseMirror h1 {
-  font-size: 26px;
+  font-size: 1.53em;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 1.1em 0 0.3em;
@@ -2666,7 +2715,7 @@ button.danger:hover {
 }
 
 .tiptap-editor .ProseMirror h2 {
-  font-size: 20px;
+  font-size: 1.18em;
   font-weight: 700;
   letter-spacing: -0.01em;
   margin: 1em 0 0.3em;
@@ -2676,7 +2725,7 @@ button.danger:hover {
 }
 
 .tiptap-editor .ProseMirror h3 {
-  font-size: 17px;
+  font-size: 1em;
   font-weight: 700;
   margin: 0.9em 0 0.2em;
   line-height: 1.4;
@@ -2905,6 +2954,19 @@ button.danger:hover {
   font-size: 11px;
   color: var(--grey-4);
   font-family: var(--font-ui);
+}
+
+.slash-menu-group-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--grey-3);
+  padding: 6px 12px 3px;
+  border-top: 1px solid var(--grey-2);
+  user-select: none;
+  pointer-events: none;
 }
 
 /* ── Inline AI organize bar ─────────────────────────────────────── */

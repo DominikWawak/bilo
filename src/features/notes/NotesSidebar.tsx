@@ -19,6 +19,7 @@ type NotesSidebarProps = {
   onOpenSearch: () => void
   sidebarPinned?: boolean
   onTogglePin?: () => void
+  updateAvailable?: boolean
 }
 
 type NoteItemProps = {
@@ -207,6 +208,7 @@ export const NotesSidebar = ({
   onOpenSearch,
   sidebarPinned = false,
   onTogglePin,
+  updateAvailable = false,
 }: NotesSidebarProps) => {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const toggleCollapse = (id: string) =>
@@ -314,8 +316,9 @@ export const NotesSidebar = ({
         <button type="button" className="sidebar-footer-btn" onClick={onNewSection} title="New section">
           + Section
         </button>
-        <button type="button" className="sidebar-footer-btn settings-gear" onClick={onOpenSettings} title="Settings">
+        <button type="button" className="sidebar-footer-btn settings-gear" onClick={onOpenSettings} title={updateAvailable ? 'Settings — update available' : 'Settings'}>
           ⚙
+          {updateAvailable && <span className="settings-gear-dot" aria-label="Update available" />}
         </button>
       </div>
     </section>

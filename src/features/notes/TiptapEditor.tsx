@@ -777,6 +777,7 @@ const JiraTicketNode = Node.create({
 type SlashCommand = {
   label: string
   description: string
+  advanced?: true
   command: (editor: Editor, range: { from: number; to: number }) => void
 }
 
@@ -824,6 +825,7 @@ const buildCommands = (
   {
     label: '/table',
     description: 'Insert 3×3 table',
+    advanced: true,
     command: (editor, range) =>
       editor
         .chain()
@@ -835,6 +837,7 @@ const buildCommands = (
   {
     label: '/code',
     description: 'Code block',
+    advanced: true,
     command: (editor, range) =>
       editor.chain().focus().deleteRange(range).toggleCodeBlock().run(),
   },
@@ -864,6 +867,7 @@ const buildCommands = (
   {
     label: '/diagram',
     description: 'Insert a Mermaid diagram block',
+    advanced: true,
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).insertContent({
         type: 'diagram',
@@ -874,6 +878,7 @@ const buildCommands = (
   {
     label: '/calculate',
     description: 'Insert an inline calculator',
+    advanced: true,
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).insertContent({ type: 'calculator' }).run()
     },
@@ -881,6 +886,7 @@ const buildCommands = (
   {
     label: '/doodle',
     description: 'Insert a freehand sketch canvas',
+    advanced: true,
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).insertContent({
         type: 'doodle',
@@ -891,6 +897,7 @@ const buildCommands = (
   {
     label: '/image',
     description: 'Insert image (from file picker)',
+    advanced: true,
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).run()
       const input = document.createElement('input')
@@ -914,6 +921,7 @@ const buildCommands = (
   {
     label: '/pdf',
     description: 'Attach a PDF file',
+    advanced: true,
     command: (editor, range) => {
       editor.chain().focus().deleteRange(range).run()
       const input = document.createElement('input')
@@ -1452,28 +1460,47 @@ function makeAtExtension(
 
 /* ── Slash menu React component ────────────────────────────────── */
 
-const SlashMenu = ({ open, position, items, selectedIndex, onSelect }: SlashMenuProps) => {
+const SlashMenu = ({ open, position, items, selectedIndex, onSelect, query }: SlashMenuProps) => {
   if (!open || items.length === 0) return null
+
+  const isFiltering = query.length > 0
+  const basic = items.filter((i) => !i.advanced)
+  const advanced = items.filter((i) => i.advanced)
+
+  const renderItem = (item: SlashCommand, index: number) => (
+    <button
+      key={item.label}
+      type="button"
+      className={`slash-menu-item ${index === selectedIndex ? 'selected' : ''}`}
+      onMouseDown={(e) => {
+        e.preventDefault()
+        onSelect(item)
+      }}
+    >
+      <span className="slash-menu-label">{item.label}</span>
+      <span className="slash-menu-desc">{item.description}</span>
+    </button>
+  )
 
   return (
     <div
       className="slash-menu"
       style={{ position: 'fixed', top: position.top, left: position.left }}
     >
-      {items.map((item, index) => (
-        <button
-          key={item.label}
-          type="button"
-          className={`slash-menu-item ${index === selectedIndex ? 'selected' : ''}`}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            onSelect(item)
-          }}
-        >
-          <span className="slash-menu-label">{item.label}</span>
-          <span className="slash-menu-desc">{item.description}</span>
-        </button>
-      ))}
+      {isFiltering
+        ? items.map((item, index) => renderItem(item, index))
+        : (
+          <>
+            {basic.map((item) => renderItem(item, items.indexOf(item)))}
+            {advanced.length > 0 && (
+              <>
+                <div className="slash-menu-group-label">Advanced</div>
+                {advanced.map((item) => renderItem(item, items.indexOf(item)))}
+              </>
+            )}
+          </>
+        )
+      }
     </div>
   )
 }
