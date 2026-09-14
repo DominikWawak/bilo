@@ -4,6 +4,7 @@ import { getVersion } from '@tauri-apps/api/app'
 import type { Note, Section } from '../notes/model'
 import type { AIAgent, AIRuntimeSettings } from './useAIRuntimeSettings'
 import { UpdateChecker } from '../updater/UpdateChecker'
+import { buildSyncPayloadMaybeEncrypted, decryptPulledData, applyPulledData } from '../sync/syncUtils'
 
 type Props = {
   settings: AIRuntimeSettings
@@ -40,6 +41,8 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
   const [syncRepoUrl, setSyncRepoUrl] = useState(() => localStorage.getItem('bilo-sync-repo') ?? '')
   const [syncToken, setSyncToken] = useState(() => localStorage.getItem('bilo-sync-token') ?? '')
   const [syncInterval, setSyncInterval] = useState<string>(() => localStorage.getItem('bilo-sync-interval') ?? 'manual')
+  // Held in memory for the session only — never written to disk, so your notes on GitHub stay encrypted at rest.
+  const [syncPassphrase, setSyncPassphrase] = useState('')
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
 
@@ -55,24 +58,17 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
     setSyncing(true)
     setSyncMsg(null)
     try {
-      const notesRaw = localStorage.getItem('bilo-notes-store') ?? '[]'
-      const sectionsRaw = localStorage.getItem('bilo-sections-store') ?? '[]'
-      const payload = JSON.stringify({ notes: JSON.parse(notesRaw), sections: JSON.parse(sectionsRaw) })
+      const passphrase = syncPassphrase.trim() || undefined
 
       if (direction === 'push') {
+        const payload = await buildSyncPayloadMaybeEncrypted(passphrase)
         await invoke('github_sync_push', { repoUrl: syncRepoUrl, token: syncToken, payload })
-        setSyncMsg('Pushed to GitHub.')
+        setSyncMsg(passphrase ? 'Pushed to GitHub (encrypted).' : 'Pushed to GitHub.')
       } else {
-        const result = await invoke<string>('github_sync_pull', { repoUrl: syncRepoUrl, token: syncToken })
-        const data = JSON.parse(result) as { notes?: unknown[]; sections?: unknown[] }
-        if (data.notes) {
-          localStorage.setItem('bilo-notes-store', JSON.stringify(data.notes))
-          localStorage.setItem('bilo-sections-store', JSON.stringify(data.sections ?? []))
-          onNotesImported?.()
-          setSyncMsg('Pulled from GitHub.')
-        } else {
-          setSyncMsg('No data returned.')
-        }
+        const raw = await invoke<string>('github_sync_pull', { repoUrl: syncRepoUrl, token: syncToken })
+        const result = await decryptPulledData(raw, passphrase)
+        const applied = applyPulledData(result, () => onNotesImported?.())
+        setSyncMsg(applied ? 'Pulled from GitHub.' : 'No data returned.')
       }
     } catch (e) {
       setSyncMsg(`Error: ${String(e)}`)
@@ -252,6 +248,11 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
             <div className="sp-field">
               <label className="sp-label" htmlFor="sync-token">Personal access token</label>
               <input id="sync-token" type="password" className="sp-input" value={syncToken} onChange={(e) => setSyncToken(e.target.value)} placeholder="ghp_…" autoComplete="off" />
+            </div>
+            <div className="sp-field">
+              <label className="sp-label" htmlFor="sync-passphrase">Encryption passphrase <span className="sp-hint">(optional)</span></label>
+              <input id="sync-passphrase" type="password" className="sp-input" value={syncPassphrase} onChange={(e) => setSyncPassphrase(e.target.value)} placeholder="Leave empty to push plaintext" autoComplete="off" />
+              <p className="sp-desc">When set, notes are encrypted (AES-256-GCM) before pushing and decrypted on pull. Never stored — re-enter it each session and on every device.</p>
             </div>
             <div className="sp-field sp-field-row">
               <label className="sp-label" htmlFor="sync-interval">Auto-sync</label>

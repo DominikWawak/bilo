@@ -2689,14 +2689,15 @@ button.danger:hover {
   outline: none;
   font-family: var(--font-note);
   font-size: var(--prose-size, 17px);
-  line-height: 1.85;
+  line-height: 1.6;
   letter-spacing: 0.005em;
   color: var(--text);
   min-height: 60vh;
 }
 
 .tiptap-editor .ProseMirror p {
-  margin: 0 0 0.5em;
+  margin: 0 0 0.35em;
+  line-height: 1.6;
 }
 
 .tiptap-editor .ProseMirror > *:first-child {
@@ -2742,7 +2743,7 @@ button.danger:hover {
 
 .tiptap-editor .ProseMirror li {
   margin: 0.2em 0;
-  line-height: 1.75;
+  line-height: 1.6;
 }
 
 /* Task list */
