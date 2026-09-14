@@ -5,6 +5,8 @@ import type { Note, Section } from '../notes/model'
 import type { AIAgent, AIRuntimeSettings } from './useAIRuntimeSettings'
 import { UpdateChecker } from '../updater/UpdateChecker'
 import { buildSyncPayloadMaybeEncrypted, decryptPulledData, applyPulledData } from '../sync/syncUtils'
+import { getSessionPassphrase, setSessionPassphrase } from '../sync/sessionKey'
+import { notifyAutoSyncSettingsChanged } from '../sync/useAutoSync'
 
 type Props = {
   settings: AIRuntimeSettings
@@ -42,7 +44,7 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
   const [syncToken, setSyncToken] = useState(() => localStorage.getItem('bilo-sync-token') ?? '')
   const [syncInterval, setSyncInterval] = useState<string>(() => localStorage.getItem('bilo-sync-interval') ?? 'manual')
   // Held in memory for the session only — never written to disk, so your notes on GitHub stay encrypted at rest.
-  const [syncPassphrase, setSyncPassphrase] = useState('')
+  const [syncPassphrase, setSyncPassphrase] = useState(() => getSessionPassphrase())
   const [syncMsg, setSyncMsg] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
 
@@ -50,6 +52,8 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
     localStorage.setItem('bilo-sync-repo', syncRepoUrl)
     localStorage.setItem('bilo-sync-token', syncToken)
     localStorage.setItem('bilo-sync-interval', syncInterval)
+    setSessionPassphrase(syncPassphrase)
+    notifyAutoSyncSettingsChanged()
     setSyncMsg('Saved.')
     setTimeout(() => setSyncMsg(null), 2000)
   }
@@ -63,6 +67,7 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
       if (direction === 'push') {
         const payload = await buildSyncPayloadMaybeEncrypted(passphrase)
         await invoke('github_sync_push', { repoUrl: syncRepoUrl, token: syncToken, payload })
+        localStorage.setItem('bilo-sync-encrypted', passphrase ? 'true' : 'false')
         setSyncMsg(passphrase ? 'Pushed to GitHub (encrypted).' : 'Pushed to GitHub.')
       } else {
         const raw = await invoke<string>('github_sync_pull', { repoUrl: syncRepoUrl, token: syncToken })
@@ -251,8 +256,8 @@ export const SettingsPanel = ({ settings, onUpdateSettings: update, onClose, onI
             </div>
             <div className="sp-field">
               <label className="sp-label" htmlFor="sync-passphrase">Encryption passphrase <span className="sp-hint">(optional)</span></label>
-              <input id="sync-passphrase" type="password" className="sp-input" value={syncPassphrase} onChange={(e) => setSyncPassphrase(e.target.value)} placeholder="Leave empty to push plaintext" autoComplete="off" />
-              <p className="sp-desc">When set, notes are encrypted (AES-256-GCM) before pushing and decrypted on pull. Never stored — re-enter it each session and on every device.</p>
+              <input id="sync-passphrase" type="password" className="sp-input" value={syncPassphrase} onChange={(e) => { setSyncPassphrase(e.target.value); setSessionPassphrase(e.target.value) }} placeholder="Leave empty to push plaintext" autoComplete="off" />
+              <p className="sp-desc">When set, notes are encrypted (AES-256-GCM) before every push (including auto-sync) and decrypted on pull. Never stored — re-enter it each session and on every device.</p>
             </div>
             <div className="sp-field sp-field-row">
               <label className="sp-label" htmlFor="sync-interval">Auto-sync</label>

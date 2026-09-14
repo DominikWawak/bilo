@@ -13,6 +13,7 @@ import { useNotesStore } from './features/notes/useNotesStore'
 import { useSectionsStore } from './features/notes/useSectionsStore'
 import { TaskStatusBar } from './features/tasks/TaskStatusBar'
 import { useTaskQueue } from './features/tasks/useTaskQueue'
+import { useAutoSync } from './features/sync/useAutoSync'
 import { invoke } from '@tauri-apps/api/core'
 import { check } from '@tauri-apps/plugin-updater'
 
@@ -30,6 +31,9 @@ function App() {
   const { settings: aiSettings, update: updateAiSettings } = useAIRuntimeSettings()
 
   const { tasks, startTask, finishTask } = useTaskQueue()
+
+  // Background push on the configured interval (Settings → GitHub Sync → Auto-sync)
+  useAutoSync()
 
   const [activeNoteId, setActiveNoteId] = useState<string | null>(() => {
     if (notes.length > 0) return notes[0].id
